@@ -1,0 +1,25 @@
+{
+  "name": "gent",
+  "version": "0.1.0",
+  "private": true,
+  "description": "pi coding agent configuration and extensions",
+  "type": "module",
+  "packageManager": "pnpm@11.1.2",
+  "engines": {
+    "node": ">=26"
+  },
+  "scripts": {
+    "test": "node --test test/*.test.ts",
+    "typecheck": "tsgo --noEmit",
+    "lint": "oxlint",
+    "format": "oxfmt",
+    "format:check": "oxfmt --check"
+  },
+  "devDependencies": {
+    "@earendil-works/pi-coding-agent": "0.80.3",
+    "@types/node": "^24",
+    "@typescript/native-preview": "latest",
+    "oxfmt": "^0.1",
+    "oxlint": "^1"
+  }
+}

@@ -1,0 +1,29 @@
+{
+  "enabled": true,
+  "network": {
+    "allowedDomains": [
+      "github.com",
+      "*.github.com",
+      "api.github.com",
+      "raw.githubusercontent.com",
+      "codeload.github.com",
+      "objects.githubusercontent.com",
+      "npmjs.org",
+      "*.npmjs.org",
+      "registry.npmjs.org",
+      "registry.yarnpkg.com",
+      "pypi.org",
+      "*.pypi.org",
+      "files.pythonhosted.org",
+      "crates.io",
+      "static.crates.io"
+    ],
+    "deniedDomains": []
+  },
+  "filesystem": {
+    "denyRead": ["~"],
+    "allowRead": [".", "/tmp"],
+    "allowWrite": [".", "/tmp"],
+    "denyWrite": [".env", ".env.*", "*.pem", "*.key", "*.p12", "id_rsa", "id_ed25519"]
+  }
+}

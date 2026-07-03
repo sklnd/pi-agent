@@ -1,0 +1,12 @@
+[tools]
+just = "latest"
+node = "26"
+pnpm = "11"
+
+[env]
+_.path = [
+ '{{config_root}}/node_modules/.bin',
+]
+
+[shell_alias]
+make = "just"
