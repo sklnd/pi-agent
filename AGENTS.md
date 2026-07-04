@@ -8,10 +8,13 @@
 pi/settings.json      # pi user settings (packages, etc.)
 src/sandbox/          # the "sandbox" pi extension (jiti-loaded by pi, NO build step)
 test/                 # Unit tests 
-flake.nix             # packages.pi-config = assembled tree consumed by nix-config
+flake.nix             # packages.pi-config + passthroughs + homeManagerModules.default
+nix/hm-module.nix     # home-manager module that installs pi + srt and wires the config
 ```
 
 The flake vendors `src/sandbox/*.ts` + `pi/settings.json` into `$out` matching pi's `$PI_CODING_AGENT_DIR` layout (`settings.json`, `extensions/sandbox/*.ts`). The default sandbox policy lives in code as `DEFAULT_CONFIG` (`config.ts`).
+
+The flake also declares `llm-agents` (https://github.com/numtide/llm-agents.nix) as an input and exposes a home-manager module (`homeManagerModules.default`, `nix/hm-module.nix`) that installs `pi` + `srt` from llm-agents, sets `PI_CODING_AGENT_DIR` / `PI_SANDBOX_SRT_BIN`, and symlinks the config tree into `~/.config/pi`. `nix-config` imports this module instead of maintaining its own inline `pi.nix`, so this flake owns the whole setup. The flake's `packages.pi` / `packages.srt` / `packages.rtk` are passthroughs from llm-agents for convenience.
 
 ## Toolchain
 
@@ -26,6 +29,8 @@ just show         # build + list the assembled tree
 just fix          # oxfmt --write + oxlint --fix + nix fmt
 just update       # nix flake update
 ```
+
+Note: `nix` commands (build/show/update/fmt) need the nix daemon, which is not available inside the pi sandbox — run those outside the agent. `just check` (the JS side: fmt-check + lint + typecheck + test) does not need nix.
 
 `pnpm` scripts mirror the JS-only checks: `test` (`vitest run`), `test:watch` (`vitest`), `typecheck` (`tsgo --noEmit`), `lint` (`oxlint`), `format`/`format:check` (`oxfmt`).
 
