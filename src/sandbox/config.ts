@@ -35,8 +35,9 @@ export interface SandboxConfig {
 }
 
 /**
- * Fallback baked-in policy, used when no sandbox.json exists on disk.
- * Kept in sync with pi/sandbox.json (the nix-managed global default).
+ * Fallback baked-in policy, used when no project sandbox.json exists on disk.
+ * This is the single source of truth for the default policy — nix-managed via
+ * the vendored extension source (no separate JSON config to keep in sync).
  *
  * Posture: the agent gets the directory it was started in (`.`) plus `/tmp`;
  * the rest of $HOME is unreadable and unwritable to sandboxed commands — except
@@ -78,7 +79,7 @@ export const DEFAULT_CONFIG: SandboxConfig = {
       "~/.local/state/nix",
       "~/.nix-profile",
       "~/.profile",
-      "~/git"
+      "~/git",
     ],
     allowWrite: [".", "/tmp", "~/git"],
     denyWrite: [

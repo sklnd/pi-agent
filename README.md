@@ -8,7 +8,6 @@ coding agent, managed as a real TypeScript project and consumed by my
 
 ```
 pi/settings.json        # pi user settings (packages, etc.)
-pi/sandbox.json         # default sandbox policy (global)
 src/sandbox/            # the "sandbox" pi extension (loaded by pi via jiti, no build)
 test/                   # Unit tests
 flake.nix               # exposes packages.pi-config (assembled tree) to nix-config
@@ -24,14 +23,15 @@ Sandboxes what the agent can do, layered:
     sandbox (full fs + network), but only after a static deny-path scan.
   - everything else → run under [`srt`](https://github.com/anthropic-experimental/sandbox-runtime)
     (`sandbox-exec` on macOS, bubblewrap on Linux) with the network + filesystem
-    policy from `sandbox.json`.
+    policy from `DEFAULT_CONFIG` (config.ts).
 - **read / write / edit / find / ls / grep** are gated at the pi level against the
   same filesystem policy — defense in depth, since those tools run inside pi's
   process and never touch the OS sandbox.
 
-Policy is merged from `<PI_CODING_AGENT_DIR>/sandbox.json` (global) and
-`<project>/.pi/sandbox.json` (project-local overrides global). `pi --no-sandbox`
-disables it; `/sandbox` prints the active policy.
+Policy starts from `DEFAULT_CONFIG` (baked into `config.ts`, nix-managed via
+the vendored source) and may be overridden by `<project>/.pi/sandbox.json`
+(project-local). `pi --no-sandbox` disables it; `/sandbox` prints the active
+policy.
 
 ## Toolchain
 

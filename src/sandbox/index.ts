@@ -13,10 +13,9 @@
  *      filesystem policy at the pi level — defense in depth, because those
  *      tools run inside pi's own process and never touch the OS sandbox.
  *
- * Config (merged; project-local overrides global; both optional — falls back to
- * the baked-in DEFAULT_CONFIG):
- *   <PI_CODING_AGENT_DIR>/sandbox.json   (global,  == getAgentDir()/sandbox.json)
- *   <cwd>/.pi/sandbox.json               (project-local)
+ * Config (merged; project-local overrides the baked-in DEFAULT_CONFIG;
+ * the project file is optional — absent keys fall back to DEFAULT_CONFIG):
+ *   <cwd>/.pi/sandbox.json               (project-local override)
  *
  * Flags: `pi --no-sandbox` disables sandboxing for the session.
  * Command: `/sandbox` prints the active policy.
@@ -28,7 +27,6 @@ import {
   CONFIG_DIR_NAME,
   createBashTool,
   type ExtensionAPI,
-  getAgentDir,
 } from "@earendil-works/pi-coding-agent"
 import {
   coercePartial,
@@ -50,11 +48,8 @@ function readJson(path: string): unknown {
 }
 
 function loadConfig(cwd: string): SandboxConfig {
-  const globalPath = join(getAgentDir(), "sandbox.json")
   const projectPath = join(cwd, CONFIG_DIR_NAME, "sandbox.json")
-  let cfg = mergeConfig(DEFAULT_CONFIG, coercePartial(readJson(globalPath)))
-  cfg = mergeConfig(cfg, coercePartial(readJson(projectPath)))
-  return cfg
+  return mergeConfig(DEFAULT_CONFIG, coercePartial(readJson(projectPath)))
 }
 
 const READ_TOOLS = new Set(["read", "ls", "find", "grep"])

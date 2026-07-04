@@ -6,13 +6,12 @@
 
 ```
 pi/settings.json      # pi user settings (packages, etc.)
-pi/sandbox.json       # default (global) sandbox policy
 src/sandbox/          # the "sandbox" pi extension (jiti-loaded by pi, NO build step)
 test/                 # Unit tests 
 flake.nix             # packages.pi-config = assembled tree consumed by nix-config
 ```
 
-The flake vendors `src/sandbox/*.ts` + `pi/*.json` into `$out` matching pi's `$PI_CODING_AGENT_DIR` layout (`settings.json`, `sandbox.json`, `extensions/sandbox/*.ts`).
+The flake vendors `src/sandbox/*.ts` + `pi/settings.json` into `$out` matching pi's `$PI_CODING_AGENT_DIR` layout (`settings.json`, `extensions/sandbox/*.ts`). The default sandbox policy lives in code as `DEFAULT_CONFIG` (`config.ts`).
 
 ## Toolchain
 
@@ -36,7 +35,7 @@ The extension layers OS-level sandboxing (`srt`) with pi-level filesystem enforc
 
 1. **No build step.** Pi loads `src/sandbox/*.ts` directly via jiti. Every runtime import must use the `.ts` extension (`./config.ts`, not `./config`) and `@earendil-works/pi-coding-agent` must be importable at runtime.
 2. **Pure modules are pi-import-free.** `config.ts`, `fsguard.ts`, and `policy.ts` must NOT import anything from `@earendil-works/pi-coding-agent` at runtime — only type-only imports (which node strips) are allowed in `srt.ts`. This keeps them unit-testable with plain `node`. Don't add runtime pi imports to these files.
-3. **Keep `DEFAULT_CONFIG` (config.ts) and `pi/sandbox.json` in sync.** Both express the same baked-in policy; the JSON is the nix-managed global default and the const is the in-code fallback. If you change one, change the other.
+3. **`DEFAULT_CONFIG` (config.ts) is the single source of truth for the default policy.** It's nix-managed via the vendored source — there's no separate `sandbox.json` to keep in sync. Don't reintroduce a JSON duplicate.
 4. **Fixed, non-configurable policy** (policy.ts): `ssh`/`scp`/`sftp`/`rsync` are always **blocked**; `git`/`gh` + package managers + `nix`/`nix-*` + `docker`/`kubectl`/`mise` **bypass** the OS sandbox (after a static deny-path token scan); everything else runs **sandboxed** under `srt`. A mixed pipeline (any untrusted segment) falls back to sandbox — bypass requires every segment trusted.
 5. **fs semantics mirror srt.** `fsguard.ts` must agree with srt: read is allow-by-default (`denyRead` denies, `allowRead` re-allows/wins); write is deny-by-default (`allowWrite` allows, `denyWrite` denies/wins). Bare-basename globs (`*.pem`) match the basename anywhere; path globs match the full expanded path; literal paths match themselves or descendants (with a path boundary, not a string prefix). It runs in-process on every platform, unlike srt's macOS-only globs.
 6. **Config merge is override, not concatenation.** `mergeConfig` replaces arrays when present; a project `sandbox.json` fully controls each list it specifies. Don't "extend" arrays on merge.
@@ -44,7 +43,7 @@ The extension layers OS-level sandboxing (`srt`) with pi-level filesystem enforc
 
 ## Config & flags
 
-- Policy merges from `<PI_CODING_AGENT_DIR>/sandbox.json` (global) then `<cwd>/.pi/sandbox.json` (project overrides global); both optional, falling back to `DEFAULT_CONFIG`.
+- Policy starts from `DEFAULT_CONFIG` (config.ts) and is overridden by `<cwd>/.pi/sandbox.json` (project-local, optional). The project file fully controls each list it specifies (override, not concatenation).
 - `pi --no-sandbox` disables sandboxing for the session; `/sandbox` prints the active policy.
 
 ## Conventions
