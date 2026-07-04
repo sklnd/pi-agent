@@ -167,7 +167,7 @@ export default function (pi: ExtensionAPI) {
   // --- /sandbox: show the active policy ---
   pi.registerCommand("sandbox", {
     description: "Show the active pi sandbox policy",
-    handler: (_args, ctx) => {
+    handler: async (_args, ctx) => {
       const c = loadConfig(ctx.cwd)
       const lines = [
         `pi sandbox: ${state ? "ACTIVE" : "disabled"}`,
