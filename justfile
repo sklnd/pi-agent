@@ -1,4 +1,4 @@
-# gent — pi coding agent config and extensions
+# pi-agent — pi coding agent config and extensions
 # Run `just` to list targets.
 
 # Node 26 + pnpm 11 come from mise (.mise.toml).
