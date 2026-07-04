@@ -1,4 +1,4 @@
-# gent
+# pi-config
 
 Configuration and extensions for the [pi](https://github.com/earendil-works/pi)
 coding agent, managed as a real TypeScript project and consumed by my
