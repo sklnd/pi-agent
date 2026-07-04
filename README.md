@@ -10,12 +10,7 @@ coding agent, managed as a real TypeScript project and consumed by my
 pi/settings.json        # pi user settings (packages, etc.)
 pi/sandbox.json         # default sandbox policy (global)
 src/sandbox/            # the "sandbox" pi extension (loaded by pi via jiti, no build)
-  index.ts              #   pi wiring: bash override, user_bash, tool_call fs guard
-  config.ts             #   policy types, defaults, config merge
-  fsguard.ts            #   path/glob matching + read/write decisions
-  policy.ts             #   command classification (block / bypass / sandbox)
-  srt.ts                #   srt (Anthropic sandbox-runtime) integration
-test/                   # node:test unit tests for the pure logic
+test/                   # Unit tests
 flake.nix               # exposes packages.pi-config (assembled tree) to nix-config
 ```
 
@@ -40,7 +35,7 @@ disables it; `/sandbox` prints the active policy.
 
 ## Toolchain
 
-Node 26 + pnpm 11 via [mise](https://mise.jdx.dev) (`.mise.toml`). TypeScript 7
+Node 26 + pnpm 11 via [mise](https://mise.jdx.dev) (`mise.toml`). TypeScript 7
 (`tsgo`) for typechecking, `oxlint`/`oxfmt` for lint/format, `node:test` for tests.
 
 ```sh
