@@ -71,15 +71,16 @@ export const DEFAULT_CONFIG: SandboxConfig = {
     allowRead: [
       ".",
       "/tmp",
-      "~/.local/share/mise",
-      "~/.config/mise",
       "~/.config/git",
-      "~/.profile",
-      "~/.nix-profile",
-      "~/.local/state/nix",
+      "~/.config/mise",
       "~/.config/nix",
+      "~/.local/share/mise",
+      "~/.local/state/nix",
+      "~/.nix-profile",
+      "~/.profile",
+      "~/git"
     ],
-    allowWrite: [".", "/tmp"],
+    allowWrite: [".", "/tmp", "~/git"],
     denyWrite: [
       ".env",
       ".env.*",
