@@ -79,9 +79,10 @@ export const DEFAULT_CONFIG: SandboxConfig = {
       "~/.local/state/nix",
       "~/.nix-profile",
       "~/.profile",
+      "~/.cache",
       "~/git",
     ],
-    allowWrite: [".", "/tmp", "~/git"],
+    allowWrite: [".", "/tmp", "~/.cache", "~/git"],
     denyWrite: [
       ".env",
       ".env.*",
