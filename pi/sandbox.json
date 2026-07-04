@@ -16,7 +16,8 @@
       "*.pypi.org",
       "files.pythonhosted.org",
       "crates.io",
-      "static.crates.io"
+      "static.crates.io",
+      "mise.en.dev"
     ],
     "deniedDomains": []
   },

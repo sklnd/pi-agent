@@ -36,10 +36,12 @@ export interface SandboxConfig {
 
 /**
  * Fallback baked-in policy, used when no sandbox.json exists on disk.
- * Kept in sync with config/pi/sandbox.json (the nix-managed global default).
+ * Kept in sync with pi/sandbox.json (the nix-managed global default).
  *
  * Posture: the agent gets the directory it was started in (`.`) plus `/tmp`;
- * the rest of $HOME is unreadable and unwritable to sandboxed commands.
+ * the rest of $HOME is unreadable and unwritable to sandboxed commands — except
+ * the toolchain roots re-allowed so mise (installs + nix profile) and git/nix
+ * config are reachable under the sandbox.
  */
 export const DEFAULT_CONFIG: SandboxConfig = {
   enabled: true,
@@ -60,12 +62,23 @@ export const DEFAULT_CONFIG: SandboxConfig = {
       "files.pythonhosted.org",
       "crates.io",
       "static.crates.io",
+      "mise.en.dev",
     ],
     deniedDomains: [],
   },
   filesystem: {
     denyRead: ["~"],
-    allowRead: [".", "/tmp"],
+    allowRead: [
+      ".",
+      "/tmp",
+      "~/.local/share/mise",
+      "~/.config/mise",
+      "~/.config/git",
+      "~/.profile",
+      "~/.nix-profile",
+      "~/.local/state/nix",
+      "~/.config/nix",
+    ],
     allowWrite: [".", "/tmp"],
     denyWrite: [
       ".env",
