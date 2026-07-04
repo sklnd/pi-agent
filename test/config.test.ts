@@ -1,5 +1,4 @@
-import assert from "node:assert/strict"
-import { test } from "node:test"
+import { expect, test } from "vitest"
 import {
   coercePartial,
   DEFAULT_CONFIG,
@@ -11,25 +10,24 @@ test("mergeConfig: override replaces arrays, keeps untouched sections", () => {
   const merged = mergeConfig(DEFAULT_CONFIG, {
     network: { allowedDomains: ["only.com"], deniedDomains: [] },
   })
-  assert.deepEqual(merged.network.allowedDomains, ["only.com"])
-  assert.equal(merged.filesystem.denyRead[0], "~", "filesystem untouched")
-  assert.equal(merged.enabled, true)
+  expect(merged.network.allowedDomains).toEqual(["only.com"])
+  expect(merged.filesystem.denyRead[0], "filesystem untouched").toBe("~")
+  expect(merged.enabled).toBe(true)
 })
 
 test("mergeConfig: project can disable", () => {
-  assert.equal(mergeConfig(DEFAULT_CONFIG, { enabled: false }).enabled, false)
+  expect(mergeConfig(DEFAULT_CONFIG, { enabled: false }).enabled).toBe(false)
 })
 
 test("mergeConfig: absent keys keep base", () => {
-  const merged = mergeConfig(DEFAULT_CONFIG, {})
-  assert.deepEqual(merged, DEFAULT_CONFIG)
+  expect(mergeConfig(DEFAULT_CONFIG, {})).toEqual(DEFAULT_CONFIG)
 })
 
 test("coercePartial tolerates junk", () => {
-  assert.deepEqual(coercePartial(null), {})
-  assert.deepEqual(coercePartial("nope"), {})
-  assert.deepEqual(coercePartial(42), {})
-  assert.deepEqual(coercePartial({ enabled: false }), { enabled: false })
+  expect(coercePartial(null)).toEqual({})
+  expect(coercePartial("nope")).toEqual({})
+  expect(coercePartial(42)).toEqual({})
+  expect(coercePartial({ enabled: false })).toEqual({ enabled: false })
 })
 
 test("toSrtSettings projects onto srt schema and drops `enabled`", () => {
@@ -38,7 +36,7 @@ test("toSrtSettings projects onto srt schema and drops `enabled`", () => {
     network: { allowedDomains: string[] }
     filesystem: { allowWrite: string[] }
   }
-  assert.equal(s.enabled, undefined)
-  assert.ok(s.network.allowedDomains.includes("*.github.com"))
-  assert.ok(s.filesystem.allowWrite.includes("."))
+  expect(s.enabled).toBeUndefined()
+  expect(s.network.allowedDomains).toContain("*.github.com")
+  expect(s.filesystem.allowWrite).toContain(".")
 })

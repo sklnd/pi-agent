@@ -16,19 +16,19 @@ The flake vendors `src/sandbox/*.ts` + `pi/*.json` into `$out` matching pi's `$P
 
 ## Toolchain
 
-Node 26 + pnpm 11 via [mise](https://mise.jdx.dev) (`mise.toml`). TypeScript 7 `tsgo` for typechecking, `oxlint`/`oxfmt` for lint/format, `node:test` for tests. `just` is the task runner (`mise.toml` aliases `make`→`just`).
+Node 26 + pnpm 11 via [mise](https://mise.jdx.dev) (`mise.toml`). TypeScript 7 `tsgo` for typechecking, `oxlint`/`oxfmt` for lint/format, `vitest` for tests. `just` is the task runner (`mise.toml` aliases `make`→`just`).
 
 ```sh
 just install      # mise install + pnpm install
 just check        # fmt-check + lint + typecheck + test  (run this after changes)
-just test         # node --test test/*.test.ts
+just test         # vitest run
 just build        # nix build .#pi-config
 just show         # build + list the assembled tree
 just fix          # oxfmt --write + oxlint --fix + nix fmt
 just update       # nix flake update
 ```
 
-`pnpm` scripts mirror the JS-only checks: `test`, `typecheck` (`tsgo --noEmit`), `lint` (`oxlint`), `format`/`format:check` (`oxfmt`).
+`pnpm` scripts mirror the JS-only checks: `test` (`vitest run`), `test:watch` (`vitest`), `typecheck` (`tsgo --noEmit`), `lint` (`oxlint`), `format`/`format:check` (`oxfmt`).
 
 ## The sandbox extension — invariants
 
@@ -50,6 +50,6 @@ The extension layers OS-level sandboxing (`srt`) with pi-level filesystem enforc
 ## Conventions
 
 - `just check` before declaring work done. Fix lint/format failures with `just fix`.
-- Tests live in `test/*.test.ts` and cover the pure logic in `config.ts`/`fsguard.ts`/`policy.ts` — add tests when changing that logic. There are no integration tests for the pi wiring in `index.ts`/`srt.ts` by design.
+- Tests live in `test/*.test.ts` (vitest) and cover the pure logic in `config.ts`/`fsguard.ts`/`policy.ts` — add tests when changing that logic. There are no integration tests for the pi wiring in `index.ts`/`srt.ts` by design.
 - Keep file header comments accurate; they document each module's role and the no-pi-import invariant.
 - This repo is also a jj/git repo (`.jj` exists) — be careful with `git`/`jj` commands that could rewrite history.

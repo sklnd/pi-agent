@@ -36,7 +36,7 @@ disables it; `/sandbox` prints the active policy.
 ## Toolchain
 
 Node 26 + pnpm 11 via [mise](https://mise.jdx.dev) (`mise.toml`). TypeScript 7
-(`tsgo`) for typechecking, `oxlint`/`oxfmt` for lint/format, `node:test` for tests.
+(`tsgo`) for typechecking, `oxlint`/`oxfmt` for lint/format, `vitest` for tests.
 
 ```sh
 mise install       # node 26 + pnpm 11

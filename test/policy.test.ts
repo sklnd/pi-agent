@@ -1,6 +1,5 @@
-import assert from "node:assert/strict"
 import { homedir } from "node:os"
-import { test } from "node:test"
+import { expect, test } from "vitest"
 import { DEFAULT_CONFIG } from "../src/sandbox/config.ts"
 import {
   classifyCommand,
@@ -13,61 +12,57 @@ const cwd = `${HOME}/git/proj`
 const action = (cmd: string) => classifyCommand(cmd, DEFAULT_CONFIG, cwd).action
 
 test("ssh/scp/sftp/rsync are blocked", () => {
-  assert.equal(action("ssh user@host"), "block")
-  assert.equal(action("scp a b:"), "block")
-  assert.equal(action("sftp host"), "block")
-  assert.equal(action("rsync -a a b"), "block")
-  assert.equal(
-    action("env FOO=1 ssh h"),
+  expect(action("ssh user@host")).toBe("block")
+  expect(action("scp a b:")).toBe("block")
+  expect(action("sftp host")).toBe("block")
+  expect(action("rsync -a a b")).toBe("block")
+  expect(action("env FOO=1 ssh h"), "wrapper + assignment skipped").toBe(
     "block",
-    "wrapper + assignment skipped",
   )
-  assert.equal(action("git status && ssh h"), "block", "any segment ssh blocks")
+  expect(action("git status && ssh h"), "any segment ssh blocks").toBe("block")
 })
 
 test("trusted tools bypass, others sandboxed", () => {
-  assert.equal(action("git status"), "bypass")
-  assert.equal(action("gh pr list"), "bypass")
-  assert.equal(action("npm install"), "bypass")
-  assert.equal(action("pnpm i"), "bypass")
-  assert.equal(action("cargo build"), "bypass")
-  assert.equal(action("mise install"), "bypass")
-  assert.equal(action("docker ps"), "bypass")
-  assert.equal(action("kubectl get pods"), "bypass")
-  assert.equal(action("nix build .#x"), "bypass")
-  assert.equal(action("nix-store --gc"), "bypass", "nix-* prefix")
-  assert.equal(action("sudo git status"), "bypass", "wrapper skipped")
-  assert.equal(action("ls -la"), "sandbox")
-  assert.equal(action("curl https://example.com"), "sandbox")
+  expect(action("git status")).toBe("bypass")
+  expect(action("gh pr list")).toBe("bypass")
+  expect(action("npm install")).toBe("bypass")
+  expect(action("pnpm i")).toBe("bypass")
+  expect(action("cargo build")).toBe("bypass")
+  expect(action("mise install")).toBe("bypass")
+  expect(action("docker ps")).toBe("bypass")
+  expect(action("kubectl get pods")).toBe("bypass")
+  expect(action("nix build .#x")).toBe("bypass")
+  expect(action("nix-store --gc"), "nix-* prefix").toBe("bypass")
+  expect(action("sudo git status"), "wrapper skipped").toBe("bypass")
+  expect(action("ls -la")).toBe("sandbox")
+  expect(action("curl https://x")).toBe("sandbox")
 })
 
 test("mixed pipelines are not fully trusted -> sandbox", () => {
-  assert.equal(action("git log | grep x"), "sandbox")
-  assert.equal(
-    action("git push; rm -rf ~"),
+  expect(action("git log | grep x")).toBe("sandbox")
+  expect(action("git push; rm -rf ~"), "untrusted segment forces sandbox").toBe(
     "sandbox",
-    "untrusted segment forces sandbox",
   )
 })
 
 test("pre-bypass path scan blocks protected paths", () => {
-  assert.equal(action("git add key.pem"), "block", "denyWrite token")
-  assert.equal(action("gh api /x < ~/.ssh/id_rsa"), "block", "denyRead token")
-  assert.equal(action("git add .env"), "block")
-  assert.equal(
-    action("git clone https://github.com/a/b"),
+  expect(action("git add key.pem"), "denyWrite token").toBe("block")
+  expect(action("gh api /x < ~/.ssh/id_rsa"), "denyRead token").toBe("block")
+  expect(action("git add .env")).toBe("block")
+  expect(action("git clone https://github.com/a/b"), "url ignored").toBe(
     "bypass",
-    "url ignored",
   )
-  assert.equal(action("git commit -m msg"), "bypass", "flags ignored")
-  assert.ok(deniedTokens("git add .env", DEFAULT_CONFIG, cwd).length > 0)
+  expect(action("git commit -m msg"), "flags ignored").toBe("bypass")
+  expect(
+    deniedTokens("git add .env", DEFAULT_CONFIG, cwd).length,
+  ).toBeGreaterThan(0)
 })
 
 test("extractPrograms", () => {
-  assert.deepEqual(extractPrograms("git log | grep x && npm t"), [
+  expect(extractPrograms("git log | grep x && npm t")).toEqual([
     "git",
     "grep",
     "npm",
   ])
-  assert.deepEqual(extractPrograms("FOO=1 sudo -E ssh h"), ["ssh"])
+  expect(extractPrograms("FOO=1 sudo -E ssh h")).toEqual(["ssh"])
 })
