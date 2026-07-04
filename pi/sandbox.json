@@ -22,7 +22,7 @@
   },
   "filesystem": {
     "denyRead": ["~"],
-    "allowRead": [".", "/tmp"],
+    "allowRead": [".", "/tmp", "~/.local/share/mise", "~/.config/mise", "~/.config/git", "~/.profile"],
     "allowWrite": [".", "/tmp"],
     "denyWrite": [".env", ".env.*", "*.pem", "*.key", "*.p12", "id_rsa", "id_ed25519"]
   }
