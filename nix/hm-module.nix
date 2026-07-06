@@ -17,23 +17,21 @@
 {
   self,
   llm-agents,
-}:
-{
+}: {
   config,
   lib,
   pkgs,
   ...
-}:
-let
+}: let
   cfg = config.programs.pi-agent;
   system = pkgs.stdenv.hostPlatform.system;
   llmPkgs = (llm-agents.packages or {}).${system} or {};
   piConfig = self.packages.${system}.pi-config;
-in
-{
+in {
   options.programs.pi-agent = {
-    enable = lib.mkEnableOption "pi-agent (pi coding agent with sandbox extensions)"
-      // { default = false; };
+    enable =
+      lib.mkEnableOption "pi-agent (pi coding agent with sandbox extensions)"
+      // {default = false;};
 
     package = lib.mkOption {
       type = lib.types.nullOr lib.types.package;
@@ -55,7 +53,7 @@ in
 
     extraPackages = lib.mkOption {
       type = lib.types.listOf lib.types.package;
-      default = [ ];
+      default = [];
       description = ''
         Extra packages to install alongside pi and srt. bubblewrap and socat
         are added automatically on Linux when srt is enabled.
@@ -64,7 +62,7 @@ in
 
     extensions = lib.mkOption {
       type = lib.types.attrsOf (lib.types.either lib.types.path lib.types.str);
-      default = { };
+      default = {};
       description = ''
         Extra pi extensions to symlink into ~/.config/pi/extensions/.
         Attribute name becomes the subdirectory name; value is the store
@@ -95,7 +93,7 @@ in
       ++ lib.optional (pkgs.stdenv.isLinux && cfg.srtPackage != null) pkgs.socat;
 
     home.sessionVariables = lib.mkMerge [
-      { PI_CODING_AGENT_DIR = cfg.configDir; }
+      {PI_CODING_AGENT_DIR = cfg.configDir;}
       (lib.mkIf (cfg.srtPackage != null) {
         PI_SANDBOX_SRT_BIN = "${cfg.srtPackage}/bin/srt";
       })
@@ -109,6 +107,7 @@ in
       // lib.mapAttrs' (name: path: {
         name = "pi/extensions/${name}";
         value.source = path;
-      }) cfg.extensions;
+      })
+      cfg.extensions;
   };
 }

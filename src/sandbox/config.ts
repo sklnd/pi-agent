@@ -71,9 +71,14 @@ export const DEFAULT_CONFIG: SandboxConfig = {
     denyRead: ["~"],
     allowRead: [
       ".",
+      "~/.cache",
       "~/.config",
       "~/.Library",
+      "~/.local",
       "~/.nix-profile",
+      "~/.npmrc",
+      "~/git",
+      "~/Library/Caches",
     ],
     allowWrite: [
       ".",

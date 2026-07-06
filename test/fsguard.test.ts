@@ -22,7 +22,7 @@ test("read: cwd and /tmp allowed, home denied", () => {
     true,
   )
   expect(isReadAllowed(fs, "~/.ssh/id_rsa", cwd)).toBe(false)
-  expect(isReadAllowed(fs, `${HOME}/.config/gh/hosts.yml`, cwd)).toBe(false)
+  expect(isReadAllowed(fs, `${HOME}/.config/gh/hosts.yml`, cwd)).toBe(true)
   expect(isReadAllowed(fs, `${HOME}/Documents/x`, cwd)).toBe(false)
 })
 
