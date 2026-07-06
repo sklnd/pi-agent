@@ -72,6 +72,7 @@ export const DEFAULT_CONFIG: SandboxConfig = {
     allowRead: [
       "~/.config",
       "~/.Library",
+      "~/.nix-profile",
     ],
     allowWrite: [
       ".",
