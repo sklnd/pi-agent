@@ -70,6 +70,7 @@ export const DEFAULT_CONFIG: SandboxConfig = {
   filesystem: {
     denyRead: ["~"],
     allowRead: [
+      ".",
       "~/.config",
       "~/.Library",
       "~/.nix-profile",
