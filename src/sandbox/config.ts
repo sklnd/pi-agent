@@ -77,6 +77,7 @@ export const DEFAULT_CONFIG: SandboxConfig = {
       "~/.local",
       "~/.nix-profile",
       "~/.npmrc",
+      "~/.rustup",
       "~/git",
       "~/Library/Caches",
     ],
