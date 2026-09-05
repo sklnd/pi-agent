@@ -133,12 +133,7 @@ export default function (pi: ExtensionAPI) {
     const { path, cleanup } = writeSrtSettings(config);
     state = { config, settingsPath: path, cleanup };
 
-    const domains = config.network.allowedDomains.length;
-    const writes = config.filesystem.allowWrite.length;
-    ctx.ui.setStatus(
-      "sandbox",
-      ctx.ui.theme.fg("accent", `🔒 srt: ${domains} domains, ${writes} write paths`),
-    );
+    ctx.ui.setStatus("sandbox", ctx.ui.theme.fg("accent", `🔒 srt`));
     ctx.ui.notify("pi sandbox active (srt)", "info");
   });
 
