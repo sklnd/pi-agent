@@ -26,18 +26,8 @@ const SRT_BIN = process.env.PI_SANDBOX_SRT_BIN || "srt";
 
 /** Project the extension's config onto srt's settings schema (drop `enabled`). */
 export function toSrtSettings(config: SandboxConfig): Record<string, unknown> {
-  return {
-    network: {
-      allowedDomains: config.network.allowedDomains,
-      deniedDomains: config.network.deniedDomains,
-    },
-    filesystem: {
-      denyRead: config.filesystem.denyRead,
-      allowRead: config.filesystem.allowRead,
-      allowWrite: config.filesystem.allowWrite,
-      denyWrite: config.filesystem.denyWrite,
-    },
-  };
+  const { enabled: _enabled, ...settings } = config;
+  return settings;
 }
 
 export interface SrtSettingsFile {
