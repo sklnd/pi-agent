@@ -28,8 +28,6 @@ fix:
     oxlint --fix .
     nix fmt .
 
-fmt-fix:
-
 fmt-check:
     oxfmt --check .
 
