@@ -18,7 +18,7 @@ test:
     pnpm run test
 
 typecheck:
-    tsgo --noEmit
+    tsc --noEmit
 
 lint:
     oxlint .

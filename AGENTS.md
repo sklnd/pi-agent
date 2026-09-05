@@ -7,7 +7,7 @@
 ```
 pi/settings.json      # pi user settings (packages, etc.)
 src/sandbox/          # the "sandbox" pi extension (jiti-loaded by pi, NO build step)
-test/                 # Unit tests 
+test/                 # Unit tests
 flake.nix             # packages.pi-config + passthroughs + homeManagerModules.default
 nix/hm-module.nix     # home-manager module that installs pi + srt and wires the config
 ```
@@ -18,7 +18,7 @@ The flake also declares `llm-agents` (https://github.com/numtide/llm-agents.nix)
 
 ## Toolchain
 
-Node 26 + pnpm 11 via [mise](https://mise.jdx.dev) (`mise.toml`). TypeScript 7 `tsgo` for typechecking, `oxlint`/`oxfmt` for lint/format, `vitest` for tests. `just` is the task runner (`mise.toml` aliases `make`→`just`).
+Node 26 + pnpm 11 via [mise](https://mise.jdx.dev) (`mise.toml`). TypeScript 7 `tsc` for typechecking, `oxlint`/`oxfmt` for lint/format, `vitest` for tests. `just` is the task runner (`mise.toml` aliases `make`→`just`).
 
 ```sh
 just install      # mise install + pnpm install
@@ -32,7 +32,7 @@ just update       # nix flake update
 
 Note: `nix` commands (build/show/update/fmt) need the nix daemon, which is not available inside the pi sandbox — run those outside the agent. `just check` (the JS side: fmt-check + lint + typecheck + test) does not need nix.
 
-`pnpm` scripts mirror the JS-only checks: `test` (`vitest run`), `test:watch` (`vitest`), `typecheck` (`tsgo --noEmit`), `lint` (`oxlint`), `format`/`format:check` (`oxfmt`).
+`pnpm` scripts mirror the JS-only checks: `test` (`vitest run`), `test:watch` (`vitest`), `typecheck` (`tsc --noEmit`), `lint` (`oxlint`), `format`/`format:check` (`oxfmt`).
 
 ## The sandbox extension — invariants
 

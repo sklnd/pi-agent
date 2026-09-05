@@ -12,26 +12,26 @@
 export interface NetworkPolicy {
   /** Allow-list. Deny-by-default: an empty list means no network. `*.x.com`
    *  matches subdomains only, NOT the apex `x.com` — list both if you need it. */
-  allowedDomains: string[]
+  allowedDomains: string[];
   /** Checked before the allow-list; takes precedence. */
-  deniedDomains: string[]
+  deniedDomains: string[];
 }
 
 export interface FilesystemPolicy {
   /** Read is allow-by-default; these paths are denied. */
-  denyRead: string[]
+  denyRead: string[];
   /** Re-allows paths inside a denied region. Takes precedence over denyRead. */
-  allowRead: string[]
+  allowRead: string[];
   /** Write is deny-by-default; only these paths are writable. */
-  allowWrite: string[]
+  allowWrite: string[];
   /** Takes precedence over allowWrite. */
-  denyWrite: string[]
+  denyWrite: string[];
 }
 
 export interface SandboxConfig {
-  enabled: boolean
-  network: NetworkPolicy
-  filesystem: FilesystemPolicy
+  enabled: boolean;
+  network: NetworkPolicy;
+  filesystem: FilesystemPolicy;
 }
 
 /**
@@ -99,35 +99,21 @@ export const DEFAULT_CONFIG: SandboxConfig = {
       "~/git",
       "~/Library/Caches",
     ],
-    denyWrite: [
-      ".env",
-      ".env.*",
-      "*.pem",
-      "*.key",
-      "*.p12",
-      "id_rsa",
-      "id_ed25519",
-    ],
+    denyWrite: [".env", ".env.*", "*.pem", "*.key", "*.p12", "id_rsa", "id_ed25519"],
   },
-}
+};
 
 /** Right-hand array wins if present; otherwise keep the base. (Override replaces,
  *  it does not concatenate — a project sandbox.json fully controls each list.) */
 function pick<T>(base: T[], override: T[] | undefined): T[] {
-  return override !== undefined ? override : base
+  return override !== undefined ? override : base;
 }
 
-export function mergeConfig(
-  base: SandboxConfig,
-  o: Partial<SandboxConfig>,
-): SandboxConfig {
+export function mergeConfig(base: SandboxConfig, o: Partial<SandboxConfig>): SandboxConfig {
   return {
     enabled: o.enabled ?? base.enabled,
     network: {
-      allowedDomains: pick(
-        base.network.allowedDomains,
-        o.network?.allowedDomains,
-      ),
+      allowedDomains: pick(base.network.allowedDomains, o.network?.allowedDomains),
       deniedDomains: pick(base.network.deniedDomains, o.network?.deniedDomains),
     },
     filesystem: {
@@ -136,11 +122,11 @@ export function mergeConfig(
       allowWrite: pick(base.filesystem.allowWrite, o.filesystem?.allowWrite),
       denyWrite: pick(base.filesystem.denyWrite, o.filesystem?.denyWrite),
     },
-  }
+  };
 }
 
 /** Parse a possibly-partial config blob (from JSON.parse). Never throws. */
 export function coercePartial(raw: unknown): Partial<SandboxConfig> {
-  if (!raw || typeof raw !== "object") return {}
-  return raw as Partial<SandboxConfig>
+  if (!raw || typeof raw !== "object") return {};
+  return raw as Partial<SandboxConfig>;
 }

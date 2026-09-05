@@ -13,16 +13,16 @@
  * module is unit-testable with plain `node` too.
  */
 
-import { spawn } from "node:child_process"
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs"
-import { tmpdir } from "node:os"
-import { join } from "node:path"
-import type { BashOperations } from "@earendil-works/pi-coding-agent"
-import type { SandboxConfig } from "./config.ts"
-import { classifyCommand } from "./policy.ts"
+import { spawn } from "node:child_process";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import type { BashOperations } from "@earendil-works/pi-coding-agent";
+import type { SandboxConfig } from "./config.ts";
+import { classifyCommand } from "./policy.ts";
 
 /** Absolute path to the srt binary. nix pins this via env var; falls back to PATH. */
-const SRT_BIN = process.env.PI_SANDBOX_SRT_BIN || "srt"
+const SRT_BIN = process.env.PI_SANDBOX_SRT_BIN || "srt";
 
 /** Project the extension's config onto srt's settings schema (drop `enabled`). */
 export function toSrtSettings(config: SandboxConfig): Record<string, unknown> {
@@ -37,37 +37,37 @@ export function toSrtSettings(config: SandboxConfig): Record<string, unknown> {
       allowWrite: config.filesystem.allowWrite,
       denyWrite: config.filesystem.denyWrite,
     },
-  }
+  };
 }
 
 export interface SrtSettingsFile {
-  path: string
-  cleanup: () => void
+  path: string;
+  cleanup: () => void;
 }
 
 /** Write srt settings to a private temp file. Returns the path and a cleanup fn. */
 export function writeSrtSettings(config: SandboxConfig): SrtSettingsFile {
-  const dir = mkdtempSync(join(tmpdir(), "pi-sandbox-"))
-  const path = join(dir, "srt-settings.json")
+  const dir = mkdtempSync(join(tmpdir(), "pi-sandbox-"));
+  const path = join(dir, "srt-settings.json");
   writeFileSync(path, JSON.stringify(toSrtSettings(config), null, 2), {
     mode: 0o600,
-  })
+  });
   return {
     path,
     cleanup: () => {
       try {
-        rmSync(dir, { recursive: true, force: true })
+        rmSync(dir, { recursive: true, force: true });
       } catch {
         // best-effort
       }
     },
-  }
+  };
 }
 
 interface ExecOpts {
-  onData: (data: Buffer) => void
-  signal?: AbortSignal
-  timeout?: number // seconds
+  onData: (data: Buffer) => void;
+  signal?: AbortSignal;
+  timeout?: number; // seconds
 }
 
 /** Spawn a child in its own process group, streaming stdout+stderr to onData,
@@ -79,54 +79,54 @@ function runChild(
   cwd: string,
   opts: ExecOpts,
 ): Promise<{ exitCode: number | null }> {
-  const { onData, signal, timeout } = opts
+  const { onData, signal, timeout } = opts;
   return new Promise((resolve, reject) => {
     const child = spawn(bin, args, {
       cwd,
       detached: true,
       stdio: ["ignore", "pipe", "pipe"],
-    })
+    });
 
-    let timedOut = false
-    let timeoutHandle: ReturnType<typeof setTimeout> | undefined
+    let timedOut = false;
+    let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
 
     const killTree = () => {
       if (child.pid) {
         try {
-          process.kill(-child.pid, "SIGKILL")
+          process.kill(-child.pid, "SIGKILL");
         } catch {
-          child.kill("SIGKILL")
+          child.kill("SIGKILL");
         }
       }
-    }
+    };
 
     if (timeout !== undefined && timeout > 0) {
       timeoutHandle = setTimeout(() => {
-        timedOut = true
-        killTree()
-      }, timeout * 1000)
+        timedOut = true;
+        killTree();
+      }, timeout * 1000);
     }
 
-    child.stdout?.on("data", onData)
-    child.stderr?.on("data", onData)
+    child.stdout?.on("data", onData);
+    child.stderr?.on("data", onData);
 
-    const onAbort = () => killTree()
-    signal?.addEventListener("abort", onAbort, { once: true })
+    const onAbort = () => killTree();
+    signal?.addEventListener("abort", onAbort, { once: true });
 
     child.on("error", (err) => {
-      if (timeoutHandle) clearTimeout(timeoutHandle)
-      signal?.removeEventListener("abort", onAbort)
-      reject(err)
-    })
+      if (timeoutHandle) clearTimeout(timeoutHandle);
+      signal?.removeEventListener("abort", onAbort);
+      reject(err);
+    });
 
     child.on("close", (code) => {
-      if (timeoutHandle) clearTimeout(timeoutHandle)
-      signal?.removeEventListener("abort", onAbort)
-      if (signal?.aborted) reject(new Error("aborted"))
-      else if (timedOut) reject(new Error(`timeout:${timeout}`))
-      else resolve({ exitCode: code })
-    })
-  })
+      if (timeoutHandle) clearTimeout(timeoutHandle);
+      signal?.removeEventListener("abort", onAbort);
+      if (signal?.aborted) reject(new Error("aborted"));
+      else if (timedOut) reject(new Error(`timeout:${timeout}`));
+      else resolve({ exitCode: code });
+    });
+  });
 }
 
 /**
@@ -135,29 +135,21 @@ function runChild(
  *   - bypass  → run directly via `bash -lc` (trusted tool, no OS sandbox)
  *   - sandbox → run under `srt --settings <file> -c <command>`
  */
-export function createPolicyBashOps(
-  config: SandboxConfig,
-  settingsPath: string,
-): BashOperations {
+export function createPolicyBashOps(config: SandboxConfig, settingsPath: string): BashOperations {
   return {
     async exec(command, cwd, options) {
-      const decision = classifyCommand(command, config, cwd)
+      const decision = classifyCommand(command, config, cwd);
 
       if (decision.action === "block") {
-        options.onData(Buffer.from(`sandbox: ${decision.reason}\n`))
-        return { exitCode: 126 }
+        options.onData(Buffer.from(`sandbox: ${decision.reason}\n`));
+        return { exitCode: 126 };
       }
 
       if (decision.action === "bypass") {
-        return runChild("bash", ["-lc", command], cwd, options)
+        return runChild("bash", ["-lc", command], cwd, options);
       }
 
-      return runChild(
-        SRT_BIN,
-        ["--settings", settingsPath, "-c", command],
-        cwd,
-        options,
-      )
+      return runChild(SRT_BIN, ["--settings", settingsPath, "-c", command], cwd, options);
     },
-  }
+  };
 }
