@@ -8,12 +8,15 @@
 # What it owns:
 #   - installs the `pi` binary and `srt` (sandbox-runtime) from llm-agents.nix
 #   - sets PI_CODING_AGENT_DIR and PI_SANDBOX_SRT_BIN
-#   - symlinks the vendored settings.json + sandbox extension into ~/.config/pi
+#   - symlinks the vendored sandbox extension into ~/.config/pi/extensions/sandbox
+#   - merges curated pi/settings.json (+ optional cfg.settings) into a mutable
+#     ~/.config/pi/settings.json on activation, preserving runtime state (e.g. defaultModel)
 #   - installs extra packages (bubblewrap + socat on Linux, plus anything extra)
 #
-# pi's own packages (e.g. "npm:pi-rtk") and extension paths are declared in
-# pi/settings.json in this repo — that file is the single source of truth for
-# pi-level config and is symlinked verbatim. Edit it there, not here.
+# Curated packages and settings are declared in pi/settings.json
+# in this repo. On `home-manager switch`, keys defined in pi/settings.json overwrite
+# the mutable settings file so computers stay in sync, while keys not in pi/settings.json
+# (like interactively saved defaultModel/defaultProvider) are preserved.
 {
   self,
   llm-agents,
@@ -76,6 +79,23 @@ in {
       };
     };
 
+    settings = lib.mkOption {
+      type = lib.types.submodule {
+        freeformType = (pkgs.formats.json {}).type;
+      };
+      default = {};
+      description = ''
+        Extra pi settings to merge into ~/.config/pi/settings.json alongside
+        the curated pi/settings.json in this repo. Keys defined here overwrite
+        the corresponding keys in ~/.config/pi/settings.json on activation, while
+        unspecified keys (such as interactively chosen models) are preserved.
+      '';
+      example = {
+        defaultProvider = "anthropic";
+        defaultModel = "claude-sonnet-4-6";
+      };
+    };
+
     configDir = lib.mkOption {
       type = lib.types.str;
       default = "${config.xdg.configHome}/pi";
@@ -101,7 +121,6 @@ in {
 
     xdg.configFile =
       {
-        "pi/settings.json".source = "${piConfig}/settings.json";
         "pi/extensions/sandbox".source = "${piConfig}/extensions/sandbox";
       }
       // lib.mapAttrs' (name: path: {
@@ -109,5 +128,57 @@ in {
         value.source = path;
       })
       cfg.extensions;
+
+    # pi writes runtime state (e.g. defaultModel when chosen via Ctrl+S, thinking level,
+    # and telemetry) to settings.json. A read-only store symlink causes EPERM on save.
+    # Instead, we manage ~/.config/pi/settings.json as a mutable file on activation:
+    # curated keys from pi/settings.json (and cfg.settings) overwrite the on-disk file
+    # on every switch (preventing drift across computers), while machine-local runtime
+    # preferences (such as defaultModel) are preserved.
+    home.activation.initPiSettings = lib.hm.dag.entryAfter ["writeBoundary"] (let
+      hasExtra = cfg.settings != {};
+      extraJson =
+        if hasExtra
+        then (pkgs.formats.json {}).generate "pi-extra-settings.json" cfg.settings
+        else null;
+      jq = "${pkgs.jq}/bin/jq";
+    in ''
+      settingsDir="${cfg.configDir}"
+      settingsFile="$settingsDir/settings.json"
+
+      $DRY_RUN_CMD mkdir -p "$settingsDir"
+
+      userJson="{}"
+      if [ -e "$settingsFile" ] && ${jq} empty "$settingsFile" 2>/dev/null; then
+        userJson=$(${jq} '.' "$settingsFile")
+      fi
+
+      # Unlink any existing symlink (e.g. migrating from read-only xdg.configFile)
+      if [ -L "$settingsFile" ]; then
+        $DRY_RUN_CMD rm -f "$settingsFile"
+      fi
+
+      if [ -v DRY_RUN ]; then
+        echo "(dry-run) merge ${piConfig}/settings.json into $settingsFile"
+      else
+        ${
+        if hasExtra
+        then ''
+          merged=$(echo "$userJson" | ${jq} \
+            --slurpfile base "${piConfig}/settings.json" \
+            --slurpfile extra "${extraJson}" \
+            '. * $base[0] * $extra[0]')
+        ''
+        else ''
+          merged=$(echo "$userJson" | ${jq} \
+            --slurpfile base "${piConfig}/settings.json" \
+            '. * $base[0]')
+        ''
+      }
+        echo "$merged" > "$settingsFile.tmp"
+        mv "$settingsFile.tmp" "$settingsFile"
+        chmod u+w "$settingsFile"
+      fi
+    '');
   };
 }

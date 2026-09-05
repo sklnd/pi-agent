@@ -18,7 +18,7 @@
     #
     #   packages.pi-config      — $PI_CODING_AGENT_DIR tree: settings.json +
     #                              extensions/sandbox/*.ts (jiti-loaded, no build)
-    #   packages.pi / srt / rtk — passthroughs from llm-agents.nix for convenience
+    #   packages.pi / srt — passthroughs from llm-agents.nix for convenience
     #   homeManagerModules.default — home-manager module that installs pi + srt,
     #                              sets env vars, and symlinks the config tree.
     #                              nix-config imports this instead of an inline
@@ -36,7 +36,6 @@
       inherit pi-config;
       pi = llmPkgs.pi or null;
       srt = llmPkgs.sandbox-runtime or null;
-      rtk = llmPkgs.rtk or null;
       default = pi-config;
     });
 

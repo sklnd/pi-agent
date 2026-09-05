@@ -14,7 +14,7 @@ nix/hm-module.nix     # home-manager module that installs pi + srt and wires the
 
 The flake vendors `src/sandbox/*.ts` + `pi/settings.json` into `$out` matching pi's `$PI_CODING_AGENT_DIR` layout (`settings.json`, `extensions/sandbox/*.ts`). The default sandbox policy lives in code as `DEFAULT_CONFIG` (`config.ts`).
 
-The flake also declares `llm-agents` (https://github.com/numtide/llm-agents.nix) as an input and exposes a home-manager module (`homeManagerModules.default`, `nix/hm-module.nix`) that installs `pi` + `srt` from llm-agents, sets `PI_CODING_AGENT_DIR` / `PI_SANDBOX_SRT_BIN`, and symlinks the config tree into `~/.config/pi`. `nix-config` imports this module instead of maintaining its own inline `pi.nix`, so this flake owns the whole setup. The flake's `packages.pi` / `packages.srt` / `packages.rtk` are passthroughs from llm-agents for convenience.
+The flake also declares `llm-agents` (https://github.com/numtide/llm-agents.nix) as an input and exposes a home-manager module (`homeManagerModules.default`, `nix/hm-module.nix`) that installs `pi` + `srt` from llm-agents, sets `PI_CODING_AGENT_DIR` / `PI_SANDBOX_SRT_BIN`, symlinks extensions into `~/.config/pi/extensions`, and merges `pi/settings.json` (+ optional `programs.pi-agent.settings`) into a mutable `~/.config/pi/settings.json` on activation. This ensures curated packages/extensions sync without drift across machines while machine-local runtime state (like `defaultModel` chosen via `Ctrl+S`) is preserved. `nix-config` imports this module instead of maintaining its own inline `pi.nix`, so this flake owns the whole setup. The flake's `packages.pi` and `packages.srt` are passthroughs from llm-agents for convenience.
 
 ## Toolchain
 
