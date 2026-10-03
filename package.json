@@ -9,8 +9,8 @@
     "test:watch": "vitest"
   },
   "devDependencies": {
-    "@earendil-works/pi-coding-agent": "0.85.1",
-    "@types/node": "^24",
+    "@earendil-works/pi-coding-agent": "1.0.0",
+    "@types/node": "^26",
     "oxfmt": "^0.66.0",
     "oxlint": "^1.81.0",
     "typescript": "^7.0.2",
