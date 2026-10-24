@@ -15,6 +15,14 @@ test("mergeConfig: project can disable", () => {
   expect(mergeConfig(DEFAULT_CONFIG, { enabled: false }).enabled).toBe(false);
 });
 
+test("mergeConfig: allowLocalBinding can be overridden", () => {
+  expect(
+    mergeConfig(DEFAULT_CONFIG, {
+      network: { allowedDomains: [], deniedDomains: [], allowLocalBinding: false },
+    }).network.allowLocalBinding,
+  ).toBe(false);
+});
+
 test("mergeConfig: absent keys keep base", () => {
   expect(mergeConfig(DEFAULT_CONFIG, {})).toEqual(DEFAULT_CONFIG);
 });
@@ -37,13 +45,11 @@ test("pnpm store/datadirs are writable so pnpm keeps a stable store dir", () => 
 test("toSrtSettings projects onto srt schema and drops `enabled`", () => {
   const s = toSrtSettings(DEFAULT_CONFIG) as {
     enabled?: unknown;
-    network: { allowedDomains: string[] };
+    network: { allowedDomains: string[]; allowLocalBinding?: boolean };
     filesystem: { allowWrite: string[] };
   };
   expect(s.enabled).toBeUndefined();
   expect(s.network.allowedDomains).toContain("*.github.com");
-  expect(s.network.allowedDomains, "loopback reachable (any port)").toEqual(
-    expect.arrayContaining(["localhost", "127.0.0.1", "[::1]"]),
-  );
+  expect(s.network.allowLocalBinding, "direct loopback reachable (any port)").toBe(true);
   expect(s.filesystem.allowWrite).toContain(".");
 });

@@ -15,6 +15,8 @@ export interface NetworkPolicy {
   allowedDomains: string[];
   /** Checked before the allow-list; takes precedence. */
   deniedDomains: string[];
+  /** Allow direct loopback connections */
+  allowLocalBinding?: boolean;
 }
 
 export interface FilesystemPolicy {
@@ -64,11 +66,9 @@ export const DEFAULT_CONFIG: SandboxConfig = {
       "crates.io",
       "*.crates.io",
       "mise.en.dev",
-      "localhost",
-      "127.0.0.1",
-      "[::1]",
     ],
     deniedDomains: [],
+    allowLocalBinding: true,
   },
   filesystem: {
     denyRead: ["~"],
@@ -121,6 +121,7 @@ export function mergeConfig(base: SandboxConfig, o: Partial<SandboxConfig>): San
     network: {
       allowedDomains: pick(base.network.allowedDomains, o.network?.allowedDomains),
       deniedDomains: pick(base.network.deniedDomains, o.network?.deniedDomains),
+      allowLocalBinding: o.network?.allowLocalBinding ?? base.network.allowLocalBinding,
     },
     filesystem: {
       denyRead: pick(base.filesystem.denyRead, o.filesystem?.denyRead),
