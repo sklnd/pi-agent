@@ -89,6 +89,7 @@ export const DEFAULT_CONFIG: SandboxConfig = {
       "/dev/null",
       "/dev/stderr",
       "/dev/stdout",
+      "/private/tmp",
       "/private/var/folders",
       "/tmp",
       "~/.cache",

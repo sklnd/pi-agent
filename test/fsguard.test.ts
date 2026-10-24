@@ -20,6 +20,7 @@ test("read: cwd and /tmp allowed, home denied", () => {
 test("write: deny by default, cwd + /tmp allowed, secrets denied", () => {
   expect(isWriteAllowed(fs, `${cwd}/out.txt`, cwd)).toBe(true);
   expect(isWriteAllowed(fs, "/tmp/x", cwd)).toBe(true);
+  expect(isWriteAllowed(fs, "/private/tmp/x", cwd), "macOS /tmp resolves here").toBe(true);
   expect(isWriteAllowed(fs, `${HOME}/x`, cwd), "home not writable").toBe(false);
   expect(isWriteAllowed(fs, `${cwd}/.env`, cwd)).toBe(false);
   expect(isWriteAllowed(fs, `${cwd}/.env.local`, cwd)).toBe(false);
