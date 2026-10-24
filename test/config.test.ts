@@ -26,6 +26,14 @@ test("coercePartial tolerates junk", () => {
   expect(coercePartial({ enabled: false })).toEqual({ enabled: false });
 });
 
+test("pnpm store/datadirs are writable so pnpm keeps a stable store dir", () => {
+  const { allowRead, allowWrite } = DEFAULT_CONFIG.filesystem;
+  expect(allowWrite).toContain("~/Library/pnpm");
+  expect(allowWrite).toContain("~/.pnpm-store");
+  expect(allowRead, "reads covered by ~/Library").toContain("~/Library");
+  expect(allowRead, "no macOS-invalid ~/.Library").not.toContain("~/.Library");
+});
+
 test("toSrtSettings projects onto srt schema and drops `enabled`", () => {
   const s = toSrtSettings(DEFAULT_CONFIG) as {
     enabled?: unknown;
