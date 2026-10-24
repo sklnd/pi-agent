@@ -42,5 +42,8 @@ test("toSrtSettings projects onto srt schema and drops `enabled`", () => {
   };
   expect(s.enabled).toBeUndefined();
   expect(s.network.allowedDomains).toContain("*.github.com");
+  expect(s.network.allowedDomains, "loopback reachable (any port)").toEqual(
+    expect.arrayContaining(["localhost", "127.0.0.1", "[::1]"]),
+  );
   expect(s.filesystem.allowWrite).toContain(".");
 });
