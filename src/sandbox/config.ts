@@ -4,9 +4,8 @@
  * This module is intentionally free of any `@earendil-works/pi-coding-agent`
  * runtime imports so its logic can be unit-tested with plain `node`.
  *
- * The policy schema is a superset of Anthropic sandbox-runtime's (`srt`)
- * config: `network` and `filesystem` are passed straight through to srt (see
- * srt.ts), while `enabled` is consumed by the extension itself.
+ * The policy schema maps onto Anthropic sandbox-runtime's (`srt`) config:
+ * `network` and `filesystem` are passed straight through to srt (see srt.ts).
  */
 
 export interface NetworkPolicy {
@@ -31,7 +30,6 @@ export interface FilesystemPolicy {
 }
 
 export interface SandboxConfig {
-  enabled: boolean;
   network: NetworkPolicy;
   filesystem: FilesystemPolicy;
 }
@@ -47,7 +45,6 @@ export interface SandboxConfig {
  * config are reachable under the sandbox.
  */
 export const DEFAULT_CONFIG: SandboxConfig = {
-  enabled: true,
   network: {
     allowedDomains: [
       "github.com",
@@ -117,7 +114,6 @@ function pick<T>(base: T[], override: T[] | undefined): T[] {
 
 export function mergeConfig(base: SandboxConfig, o: Partial<SandboxConfig>): SandboxConfig {
   return {
-    enabled: o.enabled ?? base.enabled,
     network: {
       allowedDomains: pick(base.network.allowedDomains, o.network?.allowedDomains),
       deniedDomains: pick(base.network.deniedDomains, o.network?.deniedDomains),

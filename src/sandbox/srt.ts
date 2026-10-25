@@ -14,9 +14,9 @@
  */
 
 import { spawn } from "node:child_process";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { delimiter, join } from "node:path";
 import type { BashOperations } from "@earendil-works/pi-coding-agent";
 import type { SandboxConfig } from "./config.ts";
 import { classifyCommand } from "./policy.ts";
@@ -24,10 +24,16 @@ import { classifyCommand } from "./policy.ts";
 /** Absolute path to the srt binary. nix pins this via env var; falls back to PATH. */
 const SRT_BIN = process.env.PI_SANDBOX_SRT_BIN || "srt";
 
-/** Project the extension's config onto srt's settings schema (drop `enabled`). */
+/** True when the srt binary resolves. The sandbox fails closed without it. */
+export function srtAvailable(): boolean {
+  if (SRT_BIN.includes("/")) return existsSync(SRT_BIN);
+  const path = process.env.PATH ?? "";
+  return path.split(delimiter).some((dir) => dir !== "" && existsSync(join(dir, SRT_BIN)));
+}
+
+/** Project the extension's config onto srt's settings schema. */
 export function toSrtSettings(config: SandboxConfig): Record<string, unknown> {
-  const { enabled: _enabled, ...settings } = config;
-  return settings;
+  return { network: config.network, filesystem: config.filesystem };
 }
 
 export interface SrtSettingsFile {
@@ -119,6 +125,15 @@ function runChild(
   });
 }
 
+/** BashOperations that refuses every command. Used when the sandbox could not
+ *  initialise, so commands fail closed instead of running unsandboxed. */
+export const denyOps: BashOperations = {
+  async exec(_command, _cwd, options) {
+    options.onData(Buffer.from("sandbox: not initialised; command not run\n"));
+    return { exitCode: 126 };
+  },
+};
+
 /**
  * BashOperations backend that applies the command policy per invocation:
  *   - block   → emit the reason and return a non-zero exit (surfaced to the model)
@@ -137,6 +152,11 @@ export function createPolicyBashOps(config: SandboxConfig, settingsPath: string)
 
       if (decision.action === "bypass") {
         return runChild("bash", ["-lc", command], cwd, options);
+      }
+
+      if (!srtAvailable()) {
+        options.onData(Buffer.from(`sandbox: srt not found ("${SRT_BIN}"); command not run\n`));
+        return { exitCode: 126 };
       }
 
       return runChild(SRT_BIN, ["--settings", settingsPath, "-c", command], cwd, options);

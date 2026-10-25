@@ -53,7 +53,8 @@ in {
       default = llmPkgs.sandbox-runtime or null;
       description = ''
         The srt (sandbox-runtime) package. Defaults to llm-agents.nix's
-        sandbox-runtime. Set to null to skip srt (disables OS sandboxing).
+        sandbox-runtime. Set to null to skip srt; commands that need the OS
+        sandbox are then blocked (the sandbox fails closed).
       '';
     };
 

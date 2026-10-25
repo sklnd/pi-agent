@@ -8,11 +8,6 @@ test("mergeConfig: override replaces arrays, keeps untouched sections", () => {
   });
   expect(merged.network.allowedDomains).toEqual(["only.com"]);
   expect(merged.filesystem.denyRead[0], "filesystem untouched").toBe("~");
-  expect(merged.enabled).toBe(true);
-});
-
-test("mergeConfig: project can disable", () => {
-  expect(mergeConfig(DEFAULT_CONFIG, { enabled: false }).enabled).toBe(false);
 });
 
 test("mergeConfig: allowLocalBinding can be overridden", () => {
@@ -31,7 +26,6 @@ test("coercePartial tolerates junk", () => {
   expect(coercePartial(null)).toEqual({});
   expect(coercePartial("nope")).toEqual({});
   expect(coercePartial(42)).toEqual({});
-  expect(coercePartial({ enabled: false })).toEqual({ enabled: false });
 });
 
 test("pnpm store/datadirs are writable so pnpm keeps a stable store dir", () => {
@@ -42,13 +36,11 @@ test("pnpm store/datadirs are writable so pnpm keeps a stable store dir", () => 
   expect(allowRead, "no macOS-invalid ~/.Library").not.toContain("~/.Library");
 });
 
-test("toSrtSettings projects onto srt schema and drops `enabled`", () => {
+test("toSrtSettings projects onto srt schema", () => {
   const s = toSrtSettings(DEFAULT_CONFIG) as {
-    enabled?: unknown;
     network: { allowedDomains: string[]; allowLocalBinding?: boolean };
     filesystem: { allowWrite: string[] };
   };
-  expect(s.enabled).toBeUndefined();
   expect(s.network.allowedDomains).toContain("*.github.com");
   expect(s.network.allowLocalBinding, "direct loopback reachable (any port)").toBe(true);
   expect(s.filesystem.allowWrite).toContain(".");

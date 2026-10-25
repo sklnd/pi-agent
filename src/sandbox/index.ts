@@ -17,7 +17,6 @@
  * the project file is optional — absent keys fall back to DEFAULT_CONFIG):
  *   <cwd>/.pi/sandbox.json               (project-local override)
  *
- * Flags: `pi --no-sandbox` disables sandboxing for the session.
  * Command: `/sandbox` prints the active policy.
  */
 
@@ -30,7 +29,8 @@ import {
 } from "@earendil-works/pi-coding-agent";
 import { coercePartial, DEFAULT_CONFIG, mergeConfig, type SandboxConfig } from "./config.ts";
 import { isReadAllowed, isWriteAllowed } from "./fsguard.ts";
-import { createPolicyBashOps, writeSrtSettings } from "./srt.ts";
+import { describeCommandPolicy } from "./policy.ts";
+import { createPolicyBashOps, denyOps, srtAvailable, writeSrtSettings } from "./srt.ts";
 
 function readJson(path: string): unknown {
   if (!existsSync(path)) return {};
@@ -51,12 +51,6 @@ const READ_TOOLS = new Set(["read", "ls", "find", "grep"]);
 const WRITE_TOOLS = new Set(["write", "edit"]);
 
 export default function (pi: ExtensionAPI) {
-  pi.registerFlag("no-sandbox", {
-    description: "Disable pi sandboxing (srt + filesystem policy) for this session",
-    type: "boolean",
-    default: false,
-  });
-
   const localCwd = process.cwd();
   const localBash = createBashTool(localCwd);
 
@@ -71,28 +65,33 @@ export default function (pi: ExtensionAPI) {
     ...localBash,
     label: "bash (sandboxed)",
     async execute(id, params, signal, onUpdate, ctx) {
-      if (!state) return localBash.execute(id, params, signal, onUpdate);
-      const tool = createBashTool(ctx?.cwd ?? localCwd, {
-        operations: createPolicyBashOps(state.config, state.settingsPath),
-      });
+      // Fail closed: with no sandbox state, refuse instead of running unsandboxed.
+      const operations = state ? createPolicyBashOps(state.config, state.settingsPath) : denyOps;
+      const tool = createBashTool(ctx?.cwd ?? localCwd, { operations });
       return tool.execute(id, params, signal, onUpdate);
     },
   });
 
   // --- user_bash (`!` / `!!`) override: same policy ---
   pi.on("user_bash", () => {
-    if (!state) return;
+    if (!state) return { operations: denyOps };
     return { operations: createPolicyBashOps(state.config, state.settingsPath) };
   });
 
   // --- pi-level filesystem enforcement on the built-in file tools ---
   pi.on("tool_call", (event, ctx) => {
-    if (!state) return;
+    const read = READ_TOOLS.has(event.toolName);
+    const write = WRITE_TOOLS.has(event.toolName);
+    if (!read && !write) return;
+    // Fail closed: no sandbox state means no policy to check against.
+    if (!state) {
+      return { block: true, reason: "sandbox: not initialised; file access blocked" };
+    }
     const fs = state.config.filesystem;
     const cwd = ctx.cwd;
     const input = event.input as { path?: string };
 
-    if (READ_TOOLS.has(event.toolName)) {
+    if (read) {
       const target = input.path ?? cwd;
       if (!isReadAllowed(fs, target, cwd)) {
         return {
@@ -100,7 +99,7 @@ export default function (pi: ExtensionAPI) {
           reason: `sandbox: read access to "${target}" is denied by policy`,
         };
       }
-    } else if (WRITE_TOOLS.has(event.toolName)) {
+    } else {
       const target = input.path;
       if (target && !isWriteAllowed(fs, target, cwd)) {
         return {
@@ -113,28 +112,27 @@ export default function (pi: ExtensionAPI) {
 
   // --- lifecycle ---
   pi.on("session_start", (_event, ctx) => {
-    if (pi.getFlag("no-sandbox") === true) {
-      ctx.ui.notify("pi sandbox disabled via --no-sandbox", "warning");
-      return;
-    }
-
     const config = loadConfig(ctx.cwd);
-    if (!config.enabled) {
-      ctx.ui.notify("pi sandbox disabled via config", "info");
-      return;
-    }
 
     const platform = process.platform;
     if (platform !== "darwin" && platform !== "linux") {
-      ctx.ui.notify(`pi sandbox unsupported on ${platform}; bash is NOT sandboxed`, "warning");
+      ctx.ui.notify(`pi sandbox unsupported on ${platform}; bash is blocked`, "warning");
       return;
     }
 
+    state?.cleanup(); // a repeated session_start must not leak the old settings dir
     const { path, cleanup } = writeSrtSettings(config);
     state = { config, settingsPath: path, cleanup };
 
     ctx.ui.setStatus("sandbox", ctx.ui.theme.fg("accent", `🔒 srt`));
-    ctx.ui.notify("pi sandbox active (srt)", "info");
+    if (srtAvailable()) {
+      ctx.ui.notify("pi sandbox active (srt)", "info");
+    } else {
+      ctx.ui.notify(
+        "pi sandbox: srt not found; sandboxed commands will be blocked (fails closed)",
+        "error",
+      );
+    }
   });
 
   pi.on("session_shutdown", () => {
@@ -146,9 +144,24 @@ export default function (pi: ExtensionAPI) {
   pi.registerCommand("sandbox", {
     description: "Show the active pi sandbox policy",
     handler: async (_args, ctx) => {
-      const c = loadConfig(ctx.cwd);
+      // Print the config that is actually enforced; only fall back to the disk
+      // config when nothing is enforced yet.
+      const disk = loadConfig(ctx.cwd);
+      const c = state?.config ?? disk;
+      const status = !state
+        ? "inactive"
+        : srtAvailable()
+          ? "ACTIVE (srt)"
+          : "ACTIVE but srt not found — sandboxed commands are blocked";
       const lines = [
-        `pi sandbox: ${state ? "ACTIVE" : "disabled"}`,
+        `pi sandbox: ${status}`,
+        `config:     ${state ? "enforced (loaded at session start)" : "not enforced"}`,
+        ...(state && JSON.stringify(disk) !== JSON.stringify(c)
+          ? [
+              "note:       .pi/sandbox.json changed since session start;",
+              "            the enforced policy above still applies until restart",
+            ]
+          : []),
         "",
         "Network:",
         `  allow: ${c.network.allowedDomains.join(", ") || "(none)"}`,
@@ -160,8 +173,8 @@ export default function (pi: ExtensionAPI) {
         `  allowWrite: ${c.filesystem.allowWrite.join(", ") || "(none)"}`,
         `  denyWrite:  ${c.filesystem.denyWrite.join(", ") || "(none)"}`,
         "",
-        "Fixed policy: ssh/scp/sftp/rsync blocked; git/gh + package managers,",
-        "nix, docker bypass the OS sandbox after path checks.",
+        "Fixed policy:",
+        ...describeCommandPolicy(),
       ];
       ctx.ui.notify(lines.join("\n"), "info");
     },

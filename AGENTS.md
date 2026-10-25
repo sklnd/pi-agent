@@ -18,7 +18,7 @@ The flake also declares `llm-agents` (https://github.com/numtide/llm-agents.nix)
 
 ## Toolchain
 
-Node 26 + pnpm 11 via [mise](https://mise.jdx.dev) (`mise.toml`). TypeScript 7 `tsc` for typechecking, `oxlint`/`oxfmt` for lint/format, `vitest` for tests. `just` is the task runner (`mise.toml` aliases `make`→`just`).
+Node 26 + pnpm 12 via [mise](https://mise.jdx.dev) (`mise.toml`). TypeScript 7 `tsc` for typechecking, `oxlint`/`oxfmt` for lint/format, `vitest` for tests. `just` is the task runner (`mise.toml` aliases `make`→`just`).
 
 `just fix` runs `treefmt` (`treefmt.toml`: alejandra + oxfmt). `treefmt` is **required on PATH** and is not installed by mise/pnpm — it comes from the maintainer's nix config. If you don't have it, run the underlying formatters directly (`alejandra --check .`, `oxfmt --check .`).
 
@@ -45,15 +45,15 @@ The extension layers OS-level sandboxing (`srt`) with pi-level filesystem enforc
 1. **No build step.** Pi loads `src/sandbox/*.ts` directly via jiti. Every runtime import must use the `.ts` extension (`./config.ts`, not `./config`) and `@earendil-works/pi-coding-agent` must be importable at runtime.
 2. **Pure modules are pi-import-free.** `config.ts`, `fsguard.ts`, and `policy.ts` must NOT import anything from `@earendil-works/pi-coding-agent` at runtime — only type-only imports (which node strips) are allowed in `srt.ts`. This keeps them unit-testable with plain `node`. Don't add runtime pi imports to these files.
 3. **`DEFAULT_CONFIG` (config.ts) is the single source of truth for the default policy.** It's nix-managed via the vendored source — there's no separate `sandbox.json` to keep in sync. Don't reintroduce a JSON duplicate.
-4. **Fixed, non-configurable policy** (policy.ts): `ssh`/`scp`/`sftp`/`rsync` are always **blocked**; `git`/`gh` + package managers + `nix`/`nix-*` + `docker`/`kubectl`/`mise` **bypass** the OS sandbox (after a static deny-path token scan); everything else runs **sandboxed** under `srt`. A mixed pipeline (any untrusted segment) falls back to sandbox — bypass requires every segment trusted.
+4. **Fixed, non-configurable policy** (policy.ts): `ssh`/`scp`/`sftp`/`rsync` are always **blocked**, as are the forms that let a trusted tool run an arbitrary program (`jj util exec`, `jj --config`, `git -c`/`--config-env`/`--exec-path`/`--upload-pack`/`--receive-pack`, `git clone -u`, and `GIT_*`/`JJ_*` config env); `git`/`gh`/`jj` + package managers + `docker`/`kubectl`/`mise` **bypass** (but `nix`, which can install packages and reach the daemon, does not) the OS sandbox (after a static deny-path token scan); everything else runs **sandboxed** under `srt`. A mixed pipeline (any untrusted segment) falls back to sandbox — bypass requires every segment trusted. If `srt` is missing the sandbox fails closed: sandboxed commands are refused rather than run unsandboxed.
 5. **fs semantics mirror srt.** `fsguard.ts` must agree with srt: read is allow-by-default (`denyRead` denies, `allowRead` re-allows/wins); write is deny-by-default (`allowWrite` allows, `denyWrite` denies/wins). Bare-basename globs (`*.pem`) match the basename anywhere; path globs match the full expanded path; literal paths match themselves or descendants (with a path boundary, not a string prefix). It runs in-process on every platform, unlike srt's macOS-only globs.
 6. **Config merge is override, not concatenation.** `mergeConfig` replaces arrays when present; a project `sandbox.json` fully controls each list it specifies. Don't "extend" arrays on merge.
 7. **No npm in nix.** The extension is dependency-free at runtime (pi provides its API; `srt` is a separate binary pinned via `PI_SANDBOX_SRT_BIN` or PATH). The flake only copies source — never add a build step or npm dependency to the nix package.
 
-## Config & flags
+## Config
 
 - Policy starts from `DEFAULT_CONFIG` (config.ts) and is overridden by `<cwd>/.pi/sandbox.json` (project-local, optional). The project file fully controls each list it specifies (override, not concatenation).
-- `pi --no-sandbox` disables sandboxing for the session; `/sandbox` prints the active policy.
+- `/sandbox` prints the active policy.
 
 ## Conventions
 
