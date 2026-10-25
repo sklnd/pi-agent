@@ -1,3 +1,4 @@
 {
-  "packages": ["npm:@dietrichgebert/ponytail"]
+  "packages": ["npm:@dietrichgebert/ponytail"],
+  "defaultTools": ["+codemode"]
 }
