@@ -1,27 +1,11 @@
-# Pi agent configuration and extensions — home-manager module
-#
-# Replaces the inline pi.nix that used to live in nix-config. Import with:
+# Home-manager module for pi-agent.
 #
 #   imports = [ pi-agent.homeManagerModules.default ];
 #   programs.pi-agent.enable = true;
 #
-# What it owns:
-#   - installs the `pi` binary and `srt` (sandbox-runtime) from llm-agents.nix
-#   - sets PI_CODING_AGENT_DIR and PI_SANDBOX_SRT_BIN
-#   - symlinks the vendored sandbox and agent-notify extensions into
-#     <configDir>/extensions/{sandbox,agent-notify}
-#   - symlinks the curated append system prompt into <configDir>/APPEND_SYSTEM.md
-#   - merges curated pi/settings.json (+ optional cfg.settings) into a mutable
-#     <configDir>/settings.json on activation, preserving runtime state (e.g. defaultModel)
-#   - installs extra packages (bubblewrap + socat on Linux, plus anything extra)
-#
-# Curated packages and settings are declared in pi/settings.json
-# in this repo. On `home-manager switch`, keys defined in pi/settings.json overwrite
-# the mutable settings file so computers stay in sync, while keys not in pi/settings.json
-# (like interactively saved defaultModel/defaultProvider) are preserved.
-# `packages` is the exception: it is merged as a union so packages installed
-# interactively (e.g. via the TUI) survive a switch. A package removed from the
-# curated list is still dropped, tracked via .pi-curated-packages.json.
+# This installs pi and srt, sets PI_CODING_AGENT_DIR and PI_SANDBOX_SRT_BIN,
+# symlinks the sandbox and agent-notify extensions and APPEND_SYSTEM.md under
+# configDir, and merges pi/settings.json into settings.json on activation.
 {
   self,
   llm-agents,
@@ -38,15 +22,15 @@
 in {
   options.programs.pi-agent = {
     enable =
-      lib.mkEnableOption "pi-agent (pi coding agent with sandbox extensions)"
+      lib.mkEnableOption "pi-agent (the pi coding agent with the sandbox and agent-notify extensions)"
       // {default = false;};
 
     package = lib.mkOption {
       type = lib.types.nullOr lib.types.package;
       default = llmPkgs.pi or null;
       description = ''
-        The pi package to install. Defaults to llm-agents.nix's pi.
-        Set to null to skip installing pi (e.g. if you provide it elsewhere).
+        The pi package to install. Defaults to the package from llm-agents.nix.
+        Set to null to skip it if pi is installed some other way.
       '';
     };
 
@@ -54,9 +38,9 @@ in {
       type = lib.types.nullOr lib.types.package;
       default = llmPkgs.sandbox-runtime or null;
       description = ''
-        The srt (sandbox-runtime) package. Defaults to llm-agents.nix's
-        sandbox-runtime. Set to null to skip srt; commands that need the OS
-        sandbox are then blocked (the sandbox fails closed).
+        The srt (sandbox-runtime) package. Defaults to the package from
+        llm-agents.nix. Set to null to skip it. Commands that need the OS
+        sandbox are then blocked instead of running unsandboxed.
       '';
     };
 
@@ -64,8 +48,8 @@ in {
       type = lib.types.listOf lib.types.package;
       default = [];
       description = ''
-        Extra packages to install alongside pi and srt. bubblewrap and socat
-        are added automatically on Linux when srt is enabled.
+        Extra packages to install with pi and srt. On Linux, bubblewrap and
+        socat are added automatically when srt is enabled.
       '';
     };
 
@@ -73,12 +57,10 @@ in {
       type = lib.types.attrsOf (lib.types.either lib.types.path lib.types.str);
       default = {};
       description = ''
-        Extra pi extensions to symlink into ~/.config/pi/extensions/.
-        Attribute name becomes the subdirectory name; value is the store
-        path containing the extension's .ts files (or index.ts in a subdir).
-
-        The sandbox extension is always installed from this flake's
-        pi-config; this option is for additional nix-provided extensions.
+        Extra pi extensions to symlink into configDir/extensions. The attribute
+        name is the directory name and the value is the store path holding the
+        extension's .ts files. The sandbox and agent-notify extensions come
+        from this flake, so this is only for other extensions.
       '';
       example = {
         rtk = "${llmPkgs.rtk or pkgs.emptyDirectory}/lib/pi/extensions/rtk";
@@ -91,12 +73,12 @@ in {
       };
       default = {};
       description = ''
-        Extra pi settings to merge into ~/.config/pi/settings.json alongside
-        the curated pi/settings.json in this repo. Keys defined here overwrite
-        the corresponding keys in ~/.config/pi/settings.json on activation, while
-        unspecified keys (such as interactively chosen models) are preserved.
-        `packages` is merged as a union with the on-disk value instead of
-        overwriting, so locally installed packages survive a switch.
+        Extra settings to merge into configDir/settings.json along with the
+        curated pi/settings.json. These keys win on activation; keys not set
+        here, such as a model chosen in the UI, are kept. `packages` is unioned
+        with the on-disk value so locally installed packages survive a switch,
+        and a package removed from the curated list is dropped using the state
+        file .pi-curated-packages.json.
       '';
       example = {
         defaultProvider = "anthropic";
@@ -108,64 +90,68 @@ in {
       type = lib.types.str;
       default = "${config.xdg.configHome}/pi";
       description = ''
-        Value for the PI_CODING_AGENT_DIR environment variable. The curated
-        settings and extension symlinks are written here too. Must be inside the
-        user's home directory because Home Manager can only manage files there.
+        Where pi keeps its config. Also sets PI_CODING_AGENT_DIR and where the
+        curated settings and extension symlinks are written. Must be inside the
+        home directory because Home Manager can only manage files there.
       '';
     };
   };
 
-  config = lib.mkIf cfg.enable (
-    assert lib.assertMsg
-    (lib.hasPrefix "${config.home.homeDirectory}/" cfg.configDir)
-    "programs.pi-agent.configDir must be inside ${config.home.homeDirectory}"; {
-      home = {
-        packages =
-          lib.optional (cfg.package != null) cfg.package
-          ++ lib.optional (cfg.srtPackage != null) cfg.srtPackage
-          ++ cfg.extraPackages
-          # srt needs bubblewrap + socat on Linux (ripgrep comes via dev-tools).
-          ++ lib.optional (pkgs.stdenv.isLinux && cfg.srtPackage != null) pkgs.bubblewrap
-          ++ lib.optional (pkgs.stdenv.isLinux && cfg.srtPackage != null) pkgs.socat;
+  config = lib.mkIf cfg.enable {
+    # Home Manager can only manage files inside the home directory.
+    assertions = [
+      {
+        assertion = lib.hasPrefix "${config.home.homeDirectory}/" cfg.configDir;
+        message = "programs.pi-agent.configDir must be inside ${config.home.homeDirectory}";
+      }
+    ];
 
-        sessionVariables = lib.mkMerge [
-          {PI_CODING_AGENT_DIR = cfg.configDir;}
-          (lib.mkIf (cfg.srtPackage != null) {
-            PI_SANDBOX_SRT_BIN = "${cfg.srtPackage}/bin/srt";
-          })
-        ];
+    home = {
+      packages =
+        lib.optional (cfg.package != null) cfg.package
+        ++ lib.optional (cfg.srtPackage != null) cfg.srtPackage
+        ++ cfg.extraPackages
+        # srt needs bubblewrap and socat on Linux. ripgrep comes from dev-tools.
+        ++ lib.optional (pkgs.stdenv.isLinux && cfg.srtPackage != null) pkgs.bubblewrap
+        ++ lib.optional (pkgs.stdenv.isLinux && cfg.srtPackage != null) pkgs.socat;
 
-        # Symlink the curated config tree under configDir so changing
-        # PI_CODING_AGENT_DIR never leaves the extensions behind.
-        file =
-          {
-            "${cfg.configDir}/APPEND_SYSTEM.md".source = "${piConfig}/APPEND_SYSTEM.md";
-            "${cfg.configDir}/extensions/sandbox".source = "${piConfig}/extensions/sandbox";
-            "${cfg.configDir}/extensions/agent-notify".source = "${piConfig}/extensions/agent-notify";
-          }
-          // lib.mapAttrs' (name: path: {
-            name = "${cfg.configDir}/extensions/${name}";
-            value.source = path;
-          })
-          cfg.extensions;
+      sessionVariables = lib.mkMerge [
+        {PI_CODING_AGENT_DIR = cfg.configDir;}
+        (lib.mkIf (cfg.srtPackage != null) {
+          PI_SANDBOX_SRT_BIN = "${cfg.srtPackage}/bin/srt";
+        })
+      ];
 
-        # Mutable settings.json (pi writes runtime state; a store symlink would EPERM).
-        # Curated keys win, except `packages`, which is a union to keep local installs.
-        activation.initPiSettings = lib.hm.dag.entryAfter ["writeBoundary"] (let
-          extraJson = (pkgs.formats.json {}).generate "pi-extra-settings.json" cfg.settings;
-          mergeScript = ./merge-settings.sh;
-          jq = "${pkgs.jq}/bin/jq";
-        in ''
-          SETTINGS_FILE="${cfg.configDir}/settings.json" \
-          STATE_FILE="${cfg.configDir}/.pi-curated-packages.json" \
-          BASE="${piConfig}/settings.json" \
-          EXTRA="${extraJson}" \
-          JQ="${jq}" \
-          DRY_RUN_CMD="$DRY_RUN_CMD" \
-          DRY_RUN="''${DRY_RUN:-}" \
-          ${pkgs.bash}/bin/bash ${mergeScript}
-        '');
-      };
-    }
-  );
+      # Symlink the curated config tree under configDir so changing
+      # PI_CODING_AGENT_DIR also moves the extensions.
+      file =
+        {
+          "${cfg.configDir}/APPEND_SYSTEM.md".source = "${piConfig}/APPEND_SYSTEM.md";
+          "${cfg.configDir}/extensions/sandbox".source = "${piConfig}/extensions/sandbox";
+          "${cfg.configDir}/extensions/agent-notify".source = "${piConfig}/extensions/agent-notify";
+        }
+        // lib.mapAttrs' (name: path: {
+          name = "${cfg.configDir}/extensions/${name}";
+          value.source = path;
+        })
+        cfg.extensions;
+
+      # settings.json is mutable because pi writes runtime state. A store
+      # symlink would fail with EPERM.
+      activation.initPiSettings = lib.hm.dag.entryAfter ["writeBoundary"] (let
+        extraJson = (pkgs.formats.json {}).generate "pi-extra-settings.json" cfg.settings;
+        mergeScript = ./merge-settings.sh;
+        jq = "${pkgs.jq}/bin/jq";
+      in ''
+        SETTINGS_FILE="${cfg.configDir}/settings.json" \
+        STATE_FILE="${cfg.configDir}/.pi-curated-packages.json" \
+        BASE="${piConfig}/settings.json" \
+        EXTRA="${extraJson}" \
+        JQ="${jq}" \
+        DRY_RUN_CMD="$DRY_RUN_CMD" \
+        DRY_RUN="''${DRY_RUN:-}" \
+        ${pkgs.bash}/bin/bash ${mergeScript}
+      '');
+    };
+  };
 }
