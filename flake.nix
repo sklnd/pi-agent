@@ -17,6 +17,7 @@
     # Assembled pi config tree + passthrough packages from llm-agents.nix.
     #
     #   packages.pi-config      — $PI_CODING_AGENT_DIR tree: settings.json +
+    #                              APPEND_SYSTEM.md +
     #                              extensions/sandbox/*.ts (jiti-loaded, no build)
     #   packages.pi / srt — passthroughs from llm-agents.nix for convenience
     #   homeManagerModules.default — home-manager module that installs pi + srt,
@@ -31,6 +32,7 @@
         mkdir -p $out/extensions/sandbox
         cp ${./src/sandbox}/*.ts $out/extensions/sandbox/
         cp ${./pi/settings.json} $out/settings.json
+        cp ${./pi/APPEND_SYSTEM.md} $out/APPEND_SYSTEM.md
       '';
     in {
       inherit pi-config;

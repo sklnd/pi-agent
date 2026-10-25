@@ -9,6 +9,7 @@
 #   - installs the `pi` binary and `srt` (sandbox-runtime) from llm-agents.nix
 #   - sets PI_CODING_AGENT_DIR and PI_SANDBOX_SRT_BIN
 #   - symlinks the vendored sandbox extension into ~/.config/pi/extensions/sandbox
+#   - symlinks the curated append system prompt into ~/.config/pi/APPEND_SYSTEM.md
 #   - merges curated pi/settings.json (+ optional cfg.settings) into a mutable
 #     ~/.config/pi/settings.json on activation, preserving runtime state (e.g. defaultModel)
 #   - installs extra packages (bubblewrap + socat on Linux, plus anything extra)
@@ -146,6 +147,7 @@ in {
 
     xdg.configFile =
       {
+        "pi/APPEND_SYSTEM.md".source = "${piConfig}/APPEND_SYSTEM.md";
         "pi/extensions/sandbox".source = "${piConfig}/extensions/sandbox";
       }
       // lib.mapAttrs' (name: path: {

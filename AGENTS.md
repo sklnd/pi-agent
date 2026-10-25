@@ -5,16 +5,17 @@
 ## Layout
 
 ```
-pi/settings.json      # pi user settings (packages, etc.)
+pi/settings.json      # pi user settings (packages, default tools)
+pi/APPEND_SYSTEM.md   # curated global append system prompt
 src/sandbox/          # the "sandbox" pi extension (jiti-loaded by pi, NO build step)
 test/                 # Unit tests
 flake.nix             # packages.pi-config + passthroughs + homeManagerModules.default
 nix/hm-module.nix     # home-manager module that installs pi + srt and wires the config
 ```
 
-The flake vendors `src/sandbox/*.ts` + `pi/settings.json` into `$out` matching pi's `$PI_CODING_AGENT_DIR` layout (`settings.json`, `extensions/sandbox/*.ts`). The default sandbox policy lives in code as `DEFAULT_CONFIG` (`config.ts`).
+The flake vendors `src/sandbox/*.ts`, `pi/settings.json`, and `pi/APPEND_SYSTEM.md` into `$out` matching pi's `$PI_CODING_AGENT_DIR` layout (`settings.json`, `APPEND_SYSTEM.md`, `extensions/sandbox/*.ts`). The default sandbox policy lives in code as `DEFAULT_CONFIG` (`config.ts`).
 
-The flake also declares `llm-agents` (https://github.com/numtide/llm-agents.nix) as an input and exposes a home-manager module (`homeManagerModules.default`, `nix/hm-module.nix`) that installs `pi` + `srt` from llm-agents, sets `PI_CODING_AGENT_DIR` / `PI_SANDBOX_SRT_BIN`, symlinks extensions into `~/.config/pi/extensions`, and merges `pi/settings.json` (+ optional `programs.pi-agent.settings`) into a mutable `~/.config/pi/settings.json` on activation. This ensures curated packages/extensions sync without drift across machines while machine-local runtime state (like `defaultModel` chosen via `Ctrl+S`) is preserved. The merge itself is `nix/merge-settings.sh` (read and run by the module, no build step) and is override-by-key except `packages`, which is a union of curated + locally-installed packages so interactive installs survive a switch; a package removed from curation is still dropped via the `.pi-curated-packages.json` state file. `nix/merge-settings.test.sh` exercises it (including the two-switch state round-trip) and is wired up as `checks.<system>.settings-merge` for `nix flake check`. `nix-config` imports this module instead of maintaining its own inline `pi.nix`, so this flake owns the whole setup. The flake's `packages.pi` and `packages.srt` are passthroughs from llm-agents for convenience.
+The flake also declares `llm-agents` (https://github.com/numtide/llm-agents.nix) as an input and exposes a home-manager module (`homeManagerModules.default`, `nix/hm-module.nix`) that installs `pi` + `srt` from llm-agents, sets `PI_CODING_AGENT_DIR` / `PI_SANDBOX_SRT_BIN`, symlinks extensions into `~/.config/pi/extensions`, symlinks the curated `APPEND_SYSTEM.md` into `~/.config/pi/APPEND_SYSTEM.md`, and merges `pi/settings.json` (+ optional `programs.pi-agent.settings`) into a mutable `~/.config/pi/settings.json` on activation. This ensures curated packages/extensions sync without drift across machines while machine-local runtime state (like `defaultModel` chosen via `Ctrl+S`) is preserved. The merge itself is `nix/merge-settings.sh` (read and run by the module, no build step) and is override-by-key except `packages`, which is a union of curated + locally-installed packages so interactive installs survive a switch; a package removed from curation is still dropped via the `.pi-curated-packages.json` state file. `nix/merge-settings.test.sh` exercises it (including the two-switch state round-trip) and is wired up as `checks.<system>.settings-merge` for `nix flake check`. `nix-config` imports this module instead of maintaining its own inline `pi.nix`, so this flake owns the whole setup. The flake's `packages.pi` and `packages.srt` are passthroughs from llm-agents for convenience.
 
 ## Toolchain
 

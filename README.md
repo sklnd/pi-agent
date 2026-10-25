@@ -7,11 +7,12 @@ This provides an opinionated configuration for my pi setup, with the extensions 
 ## Layout
 
 ```
-pi/settings.json   # pi user settings (packages)
-src/sandbox/       # the "sandbox" extension
-test/              # unit tests for the pure modules
-nix/               # home-manager module, settings-merge script and test
-flake.nix          # packages.pi-config (assembled config tree), checks, home-manager module
+pi/settings.json      # pi user settings (packages, default tools)
+pi/APPEND_SYSTEM.md   # curated append system prompt
+src/sandbox/          # the "sandbox" extension
+test/                 # unit tests for the pure modules
+nix/                  # home-manager module, settings-merge script and test
+flake.nix             # packages.pi-config (assembled config tree), checks, home-manager module
 ```
 
 ## What the sandbox does
@@ -73,10 +74,10 @@ The extension has no npm dependencies: pi provides the API and `srt` is a separa
 
 It exposes three things:
 
-- `packages.pi-config`: the `$PI_CODING_AGENT_DIR` tree, which contains `settings.json` and `extensions/sandbox/*.ts`.
+- `packages.pi-config`: the `$PI_CODING_AGENT_DIR` tree, which contains `settings.json`, `APPEND_SYSTEM.md`, and `extensions/sandbox/*.ts`.
 - `packages.pi` and `packages.srt`: passthroughs from [llm-agents.nix](https://github.com/numtide/llm-agents.nix).
 - `homeManagerModules.default`: the home-manager module, described below.
 
 ### Home-manager module
 
-`homeManagerModules.default` installs pi and srt, sets the environment variables, and symlinks the extension. On activation it merges `pi/settings.json` into the mutable `~/.config/pi/settings.json`. Curated settings keys win. The exception is `packages`, which is unioned so locally installed pi extensions survive a switch.
+`homeManagerModules.default` installs pi and srt, sets the environment variables, and symlinks the extension and curated `pi/APPEND_SYSTEM.md`. On activation it merges `pi/settings.json` into the mutable `~/.config/pi/settings.json`. Curated settings keys win. The exception is `packages`, which is unioned so locally installed pi extensions survive a switch.
