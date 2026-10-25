@@ -1,7 +1,7 @@
 # pi-agent — pi coding agent config and extensions
 # Run `just` to list targets.
 
-# Node 26 + pnpm 11 come from mise (.mise.toml).
+# Node 26 + pnpm 12 come from mise (.mise.toml).
 
 _default:
     @just --list

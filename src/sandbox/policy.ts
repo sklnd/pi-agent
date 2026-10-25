@@ -17,7 +17,7 @@
  */
 
 import type { SandboxConfig } from "./config.ts";
-import { expandPath, matchesAny } from "./fsguard.ts";
+import { expandPath, matchesAny, resolveRealPath } from "./fsguard.ts";
 
 /** Direct network file-transfer / shell tools that are never permitted. */
 export const SSH_BLOCKLIST = ["ssh", "scp", "sftp", "rsync"];
@@ -39,7 +39,7 @@ export const TRUSTED_TOOLS = new Set([
 
 /** Forms that let a trusted tool run an arbitrary program. Blocked outright so
  *  a bypass cannot be turned into a shell escape. Keep in sync with
- *  arbitraryExec(); policy.test.ts checks each entry is really blocked. */
+ *  findArbitraryExec(); policy.test.ts checks each entry is really blocked. */
 export const ARBITRARY_EXEC_FORMS = [
   "`jj util exec`",
   "`jj --config`",
@@ -51,6 +51,7 @@ export const ARBITRARY_EXEC_FORMS = [
   "`git clone -u`",
   "`git --receive-pack`",
   "`GIT_*`/`JJ_*` config env",
+  "`PATH=` assignment",
 ];
 
 /** Env overrides that make git/jj load config or run a program (aliases, pagers,
@@ -61,6 +62,48 @@ const EXEC_ENV =
 /** Leading tokens that wrap the real program; skipped when finding argv[0]. */
 const WRAPPERS = new Set(["sudo", "doas", "command", "env", "nice", "nohup", "time", "stdbuf"]);
 
+/** Wrapper flags that consume the following token as their value. Without this,
+ *  `sudo -u git ssh host` would treat the user `git` as the program. */
+const WRAPPER_VALUE_FLAGS: Record<string, Set<string>> = {
+  sudo: new Set([
+    "-u",
+    "--user",
+    "-g",
+    "--group",
+    "-p",
+    "--prompt",
+    "-C",
+    "--close-from",
+    "-r",
+    "--role",
+    "-t",
+    "--type",
+    "-U",
+    "--other-user",
+    "-R",
+    "--chroot",
+    "-D",
+    "--chdir",
+    "-T",
+    "--command-timeout",
+    "-h",
+    "--host",
+  ]),
+  doas: new Set(["-u", "-C"]),
+  env: new Set([
+    "-u",
+    "--unset",
+    "-C",
+    "--chdir",
+    "--block-signal",
+    "--default-signal",
+    "--ignore-signal",
+  ]),
+  nice: new Set(["-n", "--adjustment"]),
+  stdbuf: new Set(["-i", "--input", "-o", "--output", "-e", "--error"]),
+  time: new Set(["-f", "--format", "-o", "--output"]),
+};
+
 export type Action = "block" | "bypass" | "sandbox";
 
 export interface Decision {
@@ -70,89 +113,166 @@ export interface Decision {
 
 /** Split a command line into whitespace-separated tokens, honoring simple
  *  single/double quoting (no shell expansion). */
-export function tokenize(s: string): string[] {
-  const out: string[] = [];
-  let cur = "";
-  let quote: string | null = null;
-  let had = false;
-  for (let i = 0; i < s.length; i++) {
-    const c = s[i];
-    if (quote) {
-      if (c === quote) quote = null;
-      else cur += c;
-      continue;
-    }
-    if (c === '"' || c === "'") {
-      quote = c;
-      had = true;
-      continue;
-    }
-    if (/\s/.test(c)) {
-      if (cur || had) {
-        out.push(cur);
-        cur = "";
-        had = false;
+export function tokenize(commandLine: string): string[] {
+  const tokens: string[] = [];
+  let currentToken = "";
+  let activeQuote: string | null = null;
+  let hasToken = false;
+
+  for (let characterIndex = 0; characterIndex < commandLine.length; characterIndex++) {
+    const character = commandLine[characterIndex];
+
+    if (activeQuote) {
+      if (character === activeQuote) {
+        activeQuote = null;
+      } else {
+        currentToken += character;
       }
       continue;
     }
-    cur += c;
-    had = true;
+
+    if (character === '"' || character === "'") {
+      activeQuote = character;
+      hasToken = true;
+      continue;
+    }
+
+    if (/\s/.test(character)) {
+      if (currentToken || hasToken) {
+        tokens.push(currentToken);
+        currentToken = "";
+        hasToken = false;
+      }
+      continue;
+    }
+
+    currentToken += character;
+    hasToken = true;
   }
-  if (cur || had) out.push(cur);
-  return out;
+
+  if (currentToken || hasToken) {
+    tokens.push(currentToken);
+  }
+  return tokens;
 }
 
-function baseName(p: string): string {
-  const i = p.lastIndexOf("/");
-  return i >= 0 ? p.slice(i + 1) : p;
+function stripDirectory(pathValue: string): string {
+  const lastSlashIndex = pathValue.lastIndexOf("/");
+  return lastSlashIndex >= 0 ? pathValue.slice(lastSlashIndex + 1) : pathValue;
 }
 
-/** Index of the real program in a segment's tokens, skipping VAR=value, leading
- *  wrappers, and wrapper flags. Equals tokens.length when there is no program. */
+function isEnvironmentAssignment(token: string): boolean {
+  return /^[A-Za-z_][A-Za-z0-9_]*=/.test(token);
+}
+
+/**
+ * Index of the real program in a segment's tokens, skipping `VAR=value`
+ * assignments, leading wrappers, wrapper flags, and wrapper flag values.
+ * Equals `tokens.length` when there is no program.
+ */
 function programIndex(tokens: string[]): number {
-  let idx = 0;
-  while (idx < tokens.length) {
-    const tok = tokens[idx];
-    if (/^[A-Za-z_][A-Za-z0-9_]*=/.test(tok)) {
-      idx++; // VAR=value prefix
+  let tokenIndex = 0;
+  let currentWrapper: string | null = null;
+
+  while (tokenIndex < tokens.length) {
+    const token = tokens[tokenIndex];
+
+    // `FOO=bar git ...` assigns an environment variable, not the program.
+    if (isEnvironmentAssignment(token)) {
+      tokenIndex++;
       continue;
     }
-    if (WRAPPERS.has(baseName(tok))) {
-      idx++; // sudo/env/... wrapper
+
+    const wrapperName = stripDirectory(token);
+    if (WRAPPERS.has(wrapperName)) {
+      currentWrapper = wrapperName;
+      tokenIndex++;
       continue;
     }
-    if (tok.startsWith("-")) {
-      idx++; // wrapper flag (e.g. `sudo -E`); a program name is never a flag
+
+    if (token.startsWith("-")) {
+      tokenIndex++;
+      const flagName = token.split("=")[0];
+      const flagTakesValue =
+        currentWrapper !== null && WRAPPER_VALUE_FLAGS[currentWrapper]?.has(flagName);
+      // `--user=git` already contains its value; `--user git` needs the next
+      // token skipped too.
+      if (flagTakesValue && !token.includes("=") && tokenIndex < tokens.length) {
+        tokenIndex++;
+      }
       continue;
     }
+
     break;
   }
-  return idx;
+
+  return tokenIndex;
 }
 
-function segments(command: string): string[] {
-  return command
-    .split(/\|\||&&|[;\n|&]/)
-    .map((s) => s.trim())
+/** Split on pipeline/sequence operators, but not on redirection ampersands
+ *  (`2>&1`, `&>file`) which stay inside one segment. */
+function splitCommandSegments(commandLine: string): string[] {
+  return commandLine
+    .split(/\|\||&&|[;\n|]|(?<!>)&(?!>)/)
+    .map((segment) => segment.trim())
     .filter(Boolean);
 }
 
-function scan(command: string): { progs: string[]; escape: string | null } {
-  const progs: string[] = [];
-  let escape: string | null = null;
-  for (const seg of segments(command)) {
-    const tokens = tokenize(seg);
-    const idx = programIndex(tokens);
-    if (idx < tokens.length) progs.push(baseName(tokens[idx]));
-    escape ??= arbitraryExec(tokens);
+/**
+ * Walk every segment and collect its program name. A non-null escape form means
+ * a trusted tool was invoked in a way that could run another program.
+ */
+function scanCommand(commandLine: string): { programs: string[]; escapeForm: string | null } {
+  const programs: string[] = [];
+  let escapeForm: string | null = null;
+
+  for (const segment of splitCommandSegments(commandLine)) {
+    const tokens = tokenize(segment);
+    const programTokenIndex = programIndex(tokens);
+
+    if (programTokenIndex < tokens.length) {
+      programs.push(stripDirectory(tokens[programTokenIndex]));
+    }
+    escapeForm ??= findArbitraryExec(tokens);
   }
-  return { progs, escape };
+
+  return { programs, escapeForm };
 }
 
 /** Return the primary program (argv[0], stripped of path and wrappers) of every
  *  pipeline/sequence segment in the command line. */
-export function extractPrograms(command: string): string[] {
-  return scan(command).progs;
+export function extractPrograms(commandLine: string): string[] {
+  return scanCommand(commandLine).programs;
+}
+
+function isJjConfigEscapeFlag(argument: string): boolean {
+  return (
+    argument === "--config" ||
+    argument.startsWith("--config=") ||
+    argument === "--config-file" ||
+    argument.startsWith("--config-file=") ||
+    argument === "--config-toml" ||
+    argument.startsWith("--config-toml=")
+  );
+}
+
+function isGitConfigEscapeFlag(argument: string): boolean {
+  return (
+    argument === "-c" ||
+    argument === "--config-env" ||
+    argument.startsWith("--config-env=") ||
+    argument === "--exec-path" ||
+    argument.startsWith("--exec-path=") ||
+    argument === "--upload-pack" ||
+    argument.startsWith("--upload-pack=") ||
+    argument === "--receive-pack" ||
+    argument.startsWith("--receive-pack=")
+  );
+}
+
+/** Short form of `--upload-pack`: `git clone -u <program>` runs it locally. */
+function isShortUploadPackFlag(argument: string): boolean {
+  return argument === "-u" || (argument.startsWith("-u") && !argument.startsWith("--"));
 }
 
 /** Why this segment uses an escape form of a trusted tool, or null.
@@ -162,64 +282,71 @@ export function extractPrograms(command: string): string[] {
  *  define an executable alias/hook, and a cloned repo's `.git/config` is
  *  trusted once `git` is trusted. Upgrade by running trusted tools with a
  *  scrubbed config/env if that stops being acceptable. */
-function arbitraryExec(tokens: string[]): string | null {
-  const idx = programIndex(tokens);
-  if (idx >= tokens.length) return null;
-  const program = baseName(tokens[idx]);
-  const args = tokens.slice(idx + 1);
+function findArbitraryExec(tokens: string[]): string | null {
+  const programTokenIndex = programIndex(tokens);
+  if (programTokenIndex >= tokens.length) {
+    return null;
+  }
+
+  const program = stripDirectory(tokens[programTokenIndex]);
+  const programArguments = tokens.slice(programTokenIndex + 1);
+  const prefixTokens = tokens.slice(0, programTokenIndex);
+
+  // A PATH override resolves a trusted name from a writable directory.
+  if (prefixTokens.some((token) => token.startsWith("PATH="))) {
+    return "`PATH=` assignment";
+  }
 
   if (program === "git" || program === "jj") {
-    const env = tokens.slice(0, idx).find((t) => EXEC_ENV.test(t));
-    if (env) return `\`${env.split("=")[0]}\``;
+    const execEnvironment = prefixTokens.find((token) => EXEC_ENV.test(token));
+    if (execEnvironment) {
+      return `\`${execEnvironment.split("=")[0]}\``;
+    }
   }
+
   if (program === "jj") {
-    const u = args.indexOf("util");
-    if (u >= 0) {
-      const next = args[u + 1];
-      if (next === "exec" || next === "run") return "`jj util exec`";
-      if (next === "--" && (args[u + 2] === "exec" || args[u + 2] === "run")) {
+    const utilIndex = programArguments.indexOf("util");
+    if (utilIndex >= 0) {
+      const nextArgument = programArguments[utilIndex + 1];
+      if (nextArgument === "exec" || nextArgument === "run") {
+        return "`jj util exec`";
+      }
+      if (
+        nextArgument === "--" &&
+        (programArguments[utilIndex + 2] === "exec" || programArguments[utilIndex + 2] === "run")
+      ) {
         return "`jj util exec`";
       }
     }
+
     // --config/--config-file/--config-toml can define an alias to any command.
-    const flag = args.find(
-      (a) =>
-        a === "--config" ||
-        a.startsWith("--config=") ||
-        a === "--config-file" ||
-        a.startsWith("--config-file=") ||
-        a === "--config-toml" ||
-        a.startsWith("--config-toml="),
-    );
-    if (flag) return `\`jj ${flag.split("=")[0]}\``;
+    const configFlag = programArguments.find(isJjConfigEscapeFlag);
+    if (configFlag) {
+      return `\`jj ${configFlag.split("=")[0]}\``;
+    }
   }
+
   if (program === "git") {
-    const flag = args.find(
-      (a) =>
-        a === "-c" ||
-        a === "--config-env" ||
-        a.startsWith("--config-env=") ||
-        a === "--exec-path" ||
-        a.startsWith("--exec-path=") ||
-        a === "--upload-pack" ||
-        a.startsWith("--upload-pack=") ||
-        a === "--receive-pack" ||
-        a.startsWith("--receive-pack="),
-    );
-    if (flag) return `\`git ${flag.split("=")[0]}\``;
-    // Short form of --upload-pack: `git clone -u <program>` runs it locally.
-    if (
-      args.includes("clone") &&
-      args.some((a) => a === "-u" || (a.startsWith("-u") && !a.startsWith("--")))
-    ) {
+    const configFlag = programArguments.find(isGitConfigEscapeFlag);
+    if (configFlag) {
+      return `\`git ${configFlag.split("=")[0]}\``;
+    }
+
+    if (programArguments.includes("clone") && programArguments.some(isShortUploadPackFlag)) {
       return "`git clone -u`";
     }
   }
+
   return null;
 }
 
-function looksLikeUrl(tok: string): boolean {
-  return tok.includes("://") || /^[a-zA-Z]+@[^/]+:/.test(tok); // scheme:// or user@host:
+/** Shell constructs whose contents are not visible to the static token scan. */
+function hasShellExpansion(commandLine: string): boolean {
+  return /\$\(|`|<\(|>\(/.test(commandLine);
+}
+
+function isUrlLike(token: string): boolean {
+  return token.includes("://") || /^[a-zA-Z]+@[^/]+:/.test(token); // scheme:// or user@host:
 }
 
 /**
@@ -228,46 +355,83 @@ function looksLikeUrl(tok: string): boolean {
  * files. Best-effort: flags any token that resolves under a denyRead (and not
  * re-allowed by allowRead) or matches a denyWrite pattern.
  */
-export function deniedTokens(command: string, config: SandboxConfig, cwd: string): string[] {
-  const fs = config.filesystem;
-  const hits: string[] = [];
-  for (const tok of tokenize(command)) {
-    if (!tok || tok.startsWith("-") || looksLikeUrl(tok)) continue;
-    const t = expandPath(tok, cwd);
-    const readDenied = matchesAny(t, fs.denyRead, cwd) && !matchesAny(t, fs.allowRead, cwd);
-    const writeDenied = matchesAny(t, fs.denyWrite, cwd);
-    if (readDenied || writeDenied) hits.push(tok);
+/** Values a token carries that might be a path. A bare flag's value is a
+ *  separate token and is scanned on its own. */
+function pathValuesInToken(rawToken: string): string[] {
+  if (!rawToken.startsWith("-")) {
+    return [rawToken];
   }
-  return hits;
+
+  const equalsIndex = rawToken.indexOf("=");
+  if (equalsIndex >= 0) {
+    // Long or short option with an attached value, e.g. `--file=~/.ssh/id_rsa`.
+    return [rawToken.slice(equalsIndex + 1)];
+  }
+
+  // Short option with an attached path, e.g. `-F~/.ssh/id_rsa` or `-F./key`.
+  const attachedShortValue = /^-[A-Za-z]+([~/.].*)$/.exec(rawToken);
+  return attachedShortValue ? [attachedShortValue[1]] : [];
 }
 
-export function classifyCommand(command: string, config: SandboxConfig, cwd: string): Decision {
-  const { progs, escape } = scan(command);
+export function deniedTokens(commandLine: string, config: SandboxConfig, cwd: string): string[] {
+  const filesystemPolicy = config.filesystem;
+  const deniedTokensFound: string[] = [];
 
-  for (const p of progs) {
-    if (SSH_BLOCKLIST.includes(p)) {
+  for (const rawToken of tokenize(commandLine)) {
+    for (const tokenValue of pathValuesInToken(rawToken)) {
+      if (!tokenValue || isUrlLike(tokenValue)) {
+        continue;
+      }
+
+      const absolutePath = resolveRealPath(expandPath(tokenValue, cwd));
+      const readDenied =
+        matchesAny(absolutePath, filesystemPolicy.denyRead, cwd) &&
+        !matchesAny(absolutePath, filesystemPolicy.allowRead, cwd);
+      const writeDenied = matchesAny(absolutePath, filesystemPolicy.denyWrite, cwd);
+
+      if (readDenied || writeDenied) {
+        deniedTokensFound.push(tokenValue);
+      }
+    }
+  }
+
+  return deniedTokensFound;
+}
+
+export function classifyCommand(commandLine: string, config: SandboxConfig, cwd: string): Decision {
+  const { programs, escapeForm } = scanCommand(commandLine);
+
+  for (const program of programs) {
+    if (SSH_BLOCKLIST.includes(program)) {
       return {
         action: "block",
-        reason: `direct \`${p}\` is blocked by sandbox policy (SSH/file-transfer tools are not permitted). Use \`git\`/\`gh\` for repository access.`,
+        reason: `direct \`${program}\` is blocked by sandbox policy (SSH/file-transfer tools are not permitted). Use \`git\`/\`gh\` for repository access.`,
       };
     }
   }
 
-  if (escape) {
+  if (escapeForm) {
     return {
       action: "block",
-      reason: `blocked by sandbox policy: ${escape} can make a trusted tool run an arbitrary command. Invoke the command directly (it will be sandboxed).`,
+      reason: `blocked by sandbox policy: ${escapeForm} can make a trusted tool run an arbitrary command. Invoke the command directly (it will be sandboxed).`,
     };
   }
 
-  if (progs.length > 0 && progs.every((p) => TRUSTED_TOOLS.has(p))) {
-    const bad = deniedTokens(command, config, cwd);
-    if (bad.length > 0) {
+  if (programs.length > 0 && programs.every((program) => TRUSTED_TOOLS.has(program))) {
+    // The static scan cannot see inside substitutions. A bypass would hand the
+    // hidden command full host access, so run the whole line under srt instead.
+    if (hasShellExpansion(commandLine)) {
+      return { action: "sandbox" };
+    }
+
+    const deniedPaths = deniedTokens(commandLine, config, cwd);
+    if (deniedPaths.length > 0) {
       return {
         action: "block",
-        reason: `trusted-tool bypass denied: command references sandbox-protected path(s): ${bad.join(", ")}`,
+        reason: `trusted-tool bypass denied: command references sandbox-protected path(s): ${deniedPaths.join(", ")}`,
       };
     }
+
     return { action: "bypass" };
   }
 

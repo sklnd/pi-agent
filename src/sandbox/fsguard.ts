@@ -14,82 +14,145 @@
  * No pi imports — unit-testable with plain `node`.
  */
 
+import { realpathSync } from "node:fs";
 import { homedir } from "node:os";
-import { basename, isAbsolute, resolve } from "node:path";
+import { basename, dirname, isAbsolute, resolve } from "node:path";
 import type { FilesystemPolicy } from "./config.ts";
 
-const HOME = homedir();
+const HOME_DIRECTORY = homedir();
 
 /** Expand a leading `~` and resolve relative paths against `cwd` to an absolute path. */
-export function expandPath(p: string, cwd: string): string {
-  let s = p;
-  if (s === "~") s = HOME;
-  else if (s.startsWith("~/")) s = HOME + s.slice(1);
-  if (!isAbsolute(s)) s = resolve(cwd, s);
-  return s;
-}
-
-function isGlob(p: string): boolean {
-  return /[*?[\]]/.test(p);
-}
-
-/** Translate a shell-style glob to an anchored RegExp.
- *  `**` crosses `/`; `*` and `?` do not. */
-function globToRegExp(glob: string): RegExp {
-  let re = "";
-  for (let i = 0; i < glob.length; i++) {
-    const c = glob[i];
-    if (c === "*") {
-      if (glob[i + 1] === "*") {
-        re += ".*";
-        i++;
-        if (glob[i + 1] === "/") i++;
-      } else {
-        re += "[^/]*";
-      }
-    } else if (c === "?") {
-      re += "[^/]";
-    } else if ("\\^$.|+(){}".includes(c)) {
-      re += "\\" + c;
-    } else {
-      re += c; // includes literal [ ] which are valid regex character classes
-    }
+export function expandPath(pathValue: string, cwd: string): string {
+  let expandedPath = pathValue;
+  if (expandedPath === "~") {
+    expandedPath = HOME_DIRECTORY;
+  } else if (expandedPath.startsWith("~/")) {
+    expandedPath = HOME_DIRECTORY + expandedPath.slice(1);
   }
-  return new RegExp("^" + re + "$");
+  if (!isAbsolute(expandedPath)) {
+    expandedPath = resolve(cwd, expandedPath);
+  }
+  return expandedPath;
 }
 
 /**
- * Does the absolute `targetAbs` match `pattern`?
+ * Resolve symlinks in an absolute path. For a path that does not exist yet,
+ * resolve the nearest existing parent and append the missing part. This stops a
+ * new file from being created through a symlinked directory.
+ */
+export function resolveRealPath(absolutePath: string): string {
+  try {
+    return realpathSync(absolutePath);
+  } catch {
+    const parentDirectory = dirname(absolutePath);
+    if (parentDirectory === absolutePath) {
+      return absolutePath;
+    }
+    return resolve(resolveRealPath(parentDirectory), basename(absolutePath));
+  }
+}
+
+function containsGlob(pathValue: string): boolean {
+  return /[*?[\]]/.test(pathValue);
+}
+
+/**
+ * Translate a shell-style glob to an anchored RegExp.
+ * `**` crosses directory separators; `*` and `?` stay within one path segment.
+ */
+function globToRegExp(glob: string): RegExp {
+  let regexSource = "";
+
+  for (let globIndex = 0; globIndex < glob.length; globIndex++) {
+    const globCharacter = glob[globIndex];
+
+    if (globCharacter === "*") {
+      if (glob[globIndex + 1] === "*") {
+        regexSource += ".*";
+        globIndex++;
+        // A trailing slash after `**` is optional so `**/.env` also matches
+        // `.env` directly under the root.
+        if (glob[globIndex + 1] === "/") {
+          globIndex++;
+        }
+      } else {
+        regexSource += "[^/]*";
+      }
+    } else if (globCharacter === "?") {
+      regexSource += "[^/]";
+    } else if ("\\^$.|+(){}".includes(globCharacter)) {
+      regexSource += "\\" + globCharacter;
+    } else {
+      // Literal `[` and `]` are left as-is: they already form a valid regex
+      // character class.
+      regexSource += globCharacter;
+    }
+  }
+
+  return new RegExp("^" + regexSource + "$");
+}
+
+/**
+ * Does the absolute `targetAbsolutePath` match `pattern`?
  *  - A bare-basename glob (`*.pem`, `.env.*`, no `/`) matches the basename anywhere.
  *  - A path glob (`src/**`, `~/.config/*`) matches the full expanded path.
  *  - A literal path matches itself or any descendant (prefix/dir containment).
  */
-export function matchPath(targetAbs: string, pattern: string, cwd: string): boolean {
-  if (isGlob(pattern)) {
-    if (!pattern.includes("/") && !pattern.startsWith("~")) {
-      return globToRegExp(pattern).test(basename(targetAbs));
+export function matchPath(targetAbsolutePath: string, pattern: string, cwd: string): boolean {
+  if (containsGlob(pattern)) {
+    const matchesBasenameOnly = !pattern.includes("/") && !pattern.startsWith("~");
+    if (matchesBasenameOnly) {
+      return globToRegExp(pattern).test(basename(targetAbsolutePath));
     }
-    return globToRegExp(expandPath(pattern, cwd)).test(targetAbs);
+
+    // A leading `**/` followed by one name means "this basename at any depth",
+    // not "under cwd". This is how the secret-file denials cover `/tmp` and
+    // sibling repositories.
+    const basenameAtAnyDepth = pattern.startsWith("**/") && !pattern.slice(3).includes("/");
+    if (basenameAtAnyDepth) {
+      return globToRegExp(pattern.slice(3)).test(basename(targetAbsolutePath));
+    }
+
+    return globToRegExp(expandPath(pattern, cwd)).test(targetAbsolutePath);
   }
-  const pat = expandPath(pattern, cwd);
-  if (targetAbs === pat) return true;
-  const prefix = pat.endsWith("/") ? pat : pat + "/";
-  return targetAbs.startsWith(prefix);
+
+  const expandedPattern = expandPath(pattern, cwd);
+  if (targetAbsolutePath === expandedPattern) {
+    return true;
+  }
+
+  // Compare with a trailing separator so `/x/proj` cannot match `/x/proj-other`.
+  const directoryPrefix = expandedPattern.endsWith("/") ? expandedPattern : expandedPattern + "/";
+  return targetAbsolutePath.startsWith(directoryPrefix);
 }
 
-export function matchesAny(targetAbs: string, patterns: string[], cwd: string): boolean {
-  return patterns.some((p) => matchPath(targetAbs, p, cwd));
+export function matchesAny(targetAbsolutePath: string, patterns: string[], cwd: string): boolean {
+  return patterns.some((pattern) => matchPath(targetAbsolutePath, pattern, cwd));
 }
 
-export function isReadAllowed(fs: FilesystemPolicy, target: string, cwd: string): boolean {
-  const t = expandPath(target, cwd);
-  if (matchesAny(t, fs.denyRead, cwd) && !matchesAny(t, fs.allowRead, cwd)) return false;
-  return true;
+/** Read is allowed unless denied and not explicitly re-allowed. */
+export function isReadAllowed(
+  filesystemPolicy: FilesystemPolicy,
+  targetPath: string,
+  cwd: string,
+): boolean {
+  const resolvedTarget = resolveRealPath(expandPath(targetPath, cwd));
+  const isDenied = matchesAny(resolvedTarget, filesystemPolicy.denyRead, cwd);
+  const isReAllowed = matchesAny(resolvedTarget, filesystemPolicy.allowRead, cwd);
+  return !isDenied || isReAllowed;
 }
 
-export function isWriteAllowed(fs: FilesystemPolicy, target: string, cwd: string): boolean {
-  const t = expandPath(target, cwd);
-  if (!matchesAny(t, fs.allowWrite, cwd)) return false;
-  if (matchesAny(t, fs.denyWrite, cwd)) return false;
-  return true;
+/** Write must be explicitly allowed, and an explicit denial wins. */
+export function isWriteAllowed(
+  filesystemPolicy: FilesystemPolicy,
+  targetPath: string,
+  cwd: string,
+): boolean {
+  const resolvedTarget = resolveRealPath(expandPath(targetPath, cwd));
+  const isAllowed = matchesAny(resolvedTarget, filesystemPolicy.allowWrite, cwd);
+  if (!isAllowed) {
+    return false;
+  }
+  const isDenied = matchesAny(resolvedTarget, filesystemPolicy.denyWrite, cwd);
+  return !isDenied;
 }

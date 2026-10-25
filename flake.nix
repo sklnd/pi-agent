@@ -1,5 +1,5 @@
 {
-  description = "gent — pi coding agent configuration and extensions";
+  description = "pi-agent — pi coding agent configuration and extensions";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs";
@@ -30,9 +30,10 @@
       llmPkgs = (llm-agents.packages or {}).${system} or {};
 
       pi-config = pkgs.runCommandLocal "pi-config" {} ''
-        mkdir -p $out/extensions/sandbox $out/extensions/agent-notify
+        mkdir -p $out/extensions/sandbox $out/extensions/agent-notify $out/extensions/shared
         cp ${./src/sandbox}/*.ts $out/extensions/sandbox/
         cp ${./src/agent-notify}/*.ts $out/extensions/agent-notify/
+        cp ${./src/shared}/*.ts $out/extensions/shared/
         cp ${./pi/settings.json} $out/settings.json
         cp ${./pi/APPEND_SYSTEM.md} $out/APPEND_SYSTEM.md
       '';

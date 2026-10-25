@@ -30,7 +30,9 @@ function notify(title: string, body: string): void {
 
   let fellBack = false;
   const fallbackOnce = () => {
-    if (fellBack) return;
+    if (fellBack) {
+      return;
+    }
     fellBack = true;
     fallback();
   };
@@ -41,7 +43,9 @@ function notify(title: string, body: string): void {
     // A notifier that exists but fails (no D-Bus, osascript syntax) still gets
     // the terminal fallback.
     child.once("exit", (code) => {
-      if (code !== 0) fallbackOnce();
+      if (code !== 0) {
+        fallbackOnce();
+      }
     });
     child.unref();
   } catch {
@@ -51,7 +55,9 @@ function notify(title: string, body: string): void {
 
 export default function (pi: ExtensionAPI) {
   pi.on("agent_settled", ({ aborted }, ctx) => {
-    if (aborted || ctx.mode !== "tui") return;
+    if (aborted || ctx.mode !== "tui") {
+      return;
+    }
     const session = pi.getSessionName() || basename(ctx.cwd);
     notify("π ready", `${session} — waiting for input`);
   });

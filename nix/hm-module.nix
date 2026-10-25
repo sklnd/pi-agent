@@ -9,10 +9,10 @@
 #   - installs the `pi` binary and `srt` (sandbox-runtime) from llm-agents.nix
 #   - sets PI_CODING_AGENT_DIR and PI_SANDBOX_SRT_BIN
 #   - symlinks the vendored sandbox and agent-notify extensions into
-#     ~/.config/pi/extensions/{sandbox,agent-notify}
-#   - symlinks the curated append system prompt into ~/.config/pi/APPEND_SYSTEM.md
+#     <configDir>/extensions/{sandbox,agent-notify}
+#   - symlinks the curated append system prompt into <configDir>/APPEND_SYSTEM.md
 #   - merges curated pi/settings.json (+ optional cfg.settings) into a mutable
-#     ~/.config/pi/settings.json on activation, preserving runtime state (e.g. defaultModel)
+#     <configDir>/settings.json on activation, preserving runtime state (e.g. defaultModel)
 #   - installs extra packages (bubblewrap + socat on Linux, plus anything extra)
 #
 # Curated packages and settings are declared in pi/settings.json
@@ -107,55 +107,65 @@ in {
     configDir = lib.mkOption {
       type = lib.types.str;
       default = "${config.xdg.configHome}/pi";
-      description = "Value for the PI_CODING_AGENT_DIR environment variable.";
+      description = ''
+        Value for the PI_CODING_AGENT_DIR environment variable. The curated
+        settings and extension symlinks are written here too. Must be inside the
+        user's home directory because Home Manager can only manage files there.
+      '';
     };
   };
 
-  config = lib.mkIf cfg.enable {
-    home = {
-      packages =
-        lib.optional (cfg.package != null) cfg.package
-        ++ lib.optional (cfg.srtPackage != null) cfg.srtPackage
-        ++ cfg.extraPackages
-        # srt needs bubblewrap + socat on Linux (ripgrep comes via dev-tools).
-        ++ lib.optional (pkgs.stdenv.isLinux && cfg.srtPackage != null) pkgs.bubblewrap
-        ++ lib.optional (pkgs.stdenv.isLinux && cfg.srtPackage != null) pkgs.socat;
+  config = lib.mkIf cfg.enable (
+    assert lib.assertMsg
+    (lib.hasPrefix "${config.home.homeDirectory}/" cfg.configDir)
+    "programs.pi-agent.configDir must be inside ${config.home.homeDirectory}"; {
+      home = {
+        packages =
+          lib.optional (cfg.package != null) cfg.package
+          ++ lib.optional (cfg.srtPackage != null) cfg.srtPackage
+          ++ cfg.extraPackages
+          # srt needs bubblewrap + socat on Linux (ripgrep comes via dev-tools).
+          ++ lib.optional (pkgs.stdenv.isLinux && cfg.srtPackage != null) pkgs.bubblewrap
+          ++ lib.optional (pkgs.stdenv.isLinux && cfg.srtPackage != null) pkgs.socat;
 
-      sessionVariables = lib.mkMerge [
-        {PI_CODING_AGENT_DIR = cfg.configDir;}
-        (lib.mkIf (cfg.srtPackage != null) {
-          PI_SANDBOX_SRT_BIN = "${cfg.srtPackage}/bin/srt";
-        })
-      ];
+        sessionVariables = lib.mkMerge [
+          {PI_CODING_AGENT_DIR = cfg.configDir;}
+          (lib.mkIf (cfg.srtPackage != null) {
+            PI_SANDBOX_SRT_BIN = "${cfg.srtPackage}/bin/srt";
+          })
+        ];
 
-      # Mutable settings.json (pi writes runtime state; a store symlink would EPERM).
-      # Curated keys win, except `packages`, which is a union to keep local installs.
-      activation.initPiSettings = lib.hm.dag.entryAfter ["writeBoundary"] (let
-        extraJson = (pkgs.formats.json {}).generate "pi-extra-settings.json" cfg.settings;
-        mergeScript = ./merge-settings.sh;
-        jq = "${pkgs.jq}/bin/jq";
-      in ''
-        SETTINGS_FILE="${cfg.configDir}/settings.json" \
-        STATE_FILE="${cfg.configDir}/.pi-curated-packages.json" \
-        BASE="${piConfig}/settings.json" \
-        EXTRA="${extraJson}" \
-        JQ="${jq}" \
-        DRY_RUN_CMD="$DRY_RUN_CMD" \
-        DRY_RUN="''${DRY_RUN:-}" \
-        ${pkgs.bash}/bin/bash ${mergeScript}
-      '');
-    };
+        # Symlink the curated config tree under configDir so changing
+        # PI_CODING_AGENT_DIR never leaves the extensions behind.
+        file =
+          {
+            "${cfg.configDir}/APPEND_SYSTEM.md".source = "${piConfig}/APPEND_SYSTEM.md";
+            "${cfg.configDir}/extensions/sandbox".source = "${piConfig}/extensions/sandbox";
+            "${cfg.configDir}/extensions/agent-notify".source = "${piConfig}/extensions/agent-notify";
+          }
+          // lib.mapAttrs' (name: path: {
+            name = "${cfg.configDir}/extensions/${name}";
+            value.source = path;
+          })
+          cfg.extensions;
 
-    xdg.configFile =
-      {
-        "pi/APPEND_SYSTEM.md".source = "${piConfig}/APPEND_SYSTEM.md";
-        "pi/extensions/sandbox".source = "${piConfig}/extensions/sandbox";
-        "pi/extensions/agent-notify".source = "${piConfig}/extensions/agent-notify";
-      }
-      // lib.mapAttrs' (name: path: {
-        name = "pi/extensions/${name}";
-        value.source = path;
-      })
-      cfg.extensions;
-  };
+        # Mutable settings.json (pi writes runtime state; a store symlink would EPERM).
+        # Curated keys win, except `packages`, which is a union to keep local installs.
+        activation.initPiSettings = lib.hm.dag.entryAfter ["writeBoundary"] (let
+          extraJson = (pkgs.formats.json {}).generate "pi-extra-settings.json" cfg.settings;
+          mergeScript = ./merge-settings.sh;
+          jq = "${pkgs.jq}/bin/jq";
+        in ''
+          SETTINGS_FILE="${cfg.configDir}/settings.json" \
+          STATE_FILE="${cfg.configDir}/.pi-curated-packages.json" \
+          BASE="${piConfig}/settings.json" \
+          EXTRA="${extraJson}" \
+          JQ="${jq}" \
+          DRY_RUN_CMD="$DRY_RUN_CMD" \
+          DRY_RUN="''${DRY_RUN:-}" \
+          ${pkgs.bash}/bin/bash ${mergeScript}
+        '');
+      };
+    }
+  );
 }

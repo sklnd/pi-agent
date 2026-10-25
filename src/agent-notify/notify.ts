@@ -5,19 +5,14 @@
  * runtime imports so its logic can be unit-tested with plain node.
  */
 
-import { existsSync } from "node:fs";
-import { delimiter, join } from "node:path";
+import { commandOnPath } from "../shared/executable.ts";
 
 export interface Command {
   command: string;
   args: string[];
 }
 
-/** True when a binary resolves on PATH (or is an absolute path). */
-export function commandOnPath(name: string, env: NodeJS.ProcessEnv = process.env): boolean {
-  if (name.includes("/")) return existsSync(name);
-  return (env.PATH ?? "").split(delimiter).some((dir) => dir !== "" && existsSync(join(dir, name)));
-}
+export { commandOnPath };
 
 /** Keep notification text printable, single-line, and away from OSC delimiters. */
 export function sanitize(text: string): string {
@@ -43,7 +38,9 @@ export function desktopCommand(
   title: string,
   body: string,
 ): Command | null {
-  if (env.SSH_CONNECTION || env.SSH_TTY) return null;
+  if (env.SSH_CONNECTION || env.SSH_TTY) {
+    return null;
+  }
 
   const t = sanitize(title);
   const b = sanitize(body);
@@ -97,6 +94,8 @@ export function terminalSequence(
     ? `\x1b]99;i=${id}:d=0;${t}\x1b\\\x1b]99;i=${id}:p=body;${b}\x1b\\`
     : `\x1b]777;notify;${t};${b}\x07`;
 
-  if (!env.TMUX) return sequence;
+  if (!env.TMUX) {
+    return sequence;
+  }
   return `\x1bPtmux;${sequence.replaceAll("\x1b", "\x1b\x1b")}\x1b\\`;
 }

@@ -19,6 +19,11 @@ set -euo pipefail
 jq="${JQ:-jq}"
 run="${DRY_RUN_CMD:-}"
 
+if [ -n "${DRY_RUN:-}" ]; then
+  echo "(dry-run) merge $BASE into $SETTINGS_FILE"
+  exit 0
+fi
+
 $run mkdir -p "$(dirname "$SETTINGS_FILE")"
 
 userJson=$("$jq" -c '.' "$SETTINGS_FILE" 2>/dev/null || echo '{}')
@@ -27,11 +32,6 @@ lastCurated=$("$jq" -c '.' "$STATE_FILE" 2>/dev/null || echo '[]')
 # Migrate away from a read-only store symlink (EPERM on save).
 if [ -L "$SETTINGS_FILE" ]; then
   $run rm -f "$SETTINGS_FILE"
-fi
-
-if [ -n "${DRY_RUN:-}" ]; then
-  echo "(dry-run) merge $BASE into $SETTINGS_FILE"
-  exit 0
 fi
 
 merged=$(printf '%s' "$userJson" | "$jq" \

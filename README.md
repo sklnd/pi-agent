@@ -11,6 +11,7 @@ pi/settings.json      # pi user settings (packages, default tools)
 pi/APPEND_SYSTEM.md   # curated append system prompt
 src/sandbox/          # the "sandbox" extension
 src/agent-notify/     # the "agent-notify" extension
+src/shared/           # helpers shared by the extensions
 test/                 # unit tests for the pure modules
 nix/                  # home-manager module, settings-merge script and test
 flake.nix             # packages.pi-config (assembled config tree), checks, home-manager module
@@ -48,7 +49,7 @@ Inside tmux, set `set -g allow-passthrough all` so background tabs reach the out
 
 ## Configuring
 
-The default policy is `DEFAULT_CONFIG` in `src/sandbox/config.ts`. A project can override it with `<project>/.pi/sandbox.json`. Any list the file specifies replaces the default list rather than extending it. On macOS and Linux, sandboxing is always on. `/sandbox` prints the active policy.
+The default policy is `DEFAULT_CONFIG` in `src/sandbox/config.ts`. A project can tighten it with `<project>/.pi/sandbox.json`: allow lists are intersected with the default policy and deny lists are unioned with it, so a cloned repository cannot widen access. On macOS and Linux, sandboxing is always on. `/sandbox` prints the active policy.
 
 ## Development
 
@@ -89,4 +90,4 @@ It exposes three things:
 
 ### Home-manager module
 
-`homeManagerModules.default` installs pi and srt, sets the environment variables, and symlinks the extensions and curated `pi/APPEND_SYSTEM.md`. On activation it merges `pi/settings.json` into the mutable `~/.config/pi/settings.json`. Curated settings keys win. The exception is `packages`, which is unioned so locally installed pi extensions survive a switch.
+`homeManagerModules.default` installs pi and srt, sets the environment variables, and symlinks the extensions and curated `pi/APPEND_SYSTEM.md` under `configDir` (default `~/.config/pi`). On activation it merges `pi/settings.json` into the mutable `<configDir>/settings.json`. Curated settings keys win. The exception is `packages`, which is unioned so locally installed pi extensions survive a switch.

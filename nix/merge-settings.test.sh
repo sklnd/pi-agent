@@ -110,4 +110,23 @@ two_pass() {
 }
 two_pass
 
+# A dry run must not remove a symlinked settings file.
+dry_run_keeps_symlink() {
+  local dir="$tmp/dry-run"
+  mkdir -p "$dir"
+  printf '%s' '{}' > "$dir/base.json"
+  printf '%s' '{}' > "$dir/extra.json"
+  printf '%s' '{"x":1}' > "$dir/real.json"
+  ln -s real.json "$dir/settings.json"
+
+  SETTINGS_FILE="$dir/settings.json" STATE_FILE="$dir/state.json" \
+    BASE="$dir/base.json" EXTRA="$dir/extra.json" DRY_RUN=1 \
+    bash "$MERGE_SCRIPT"
+
+  [ -L "$dir/settings.json" ] || fail "dry-run removed the settings symlink"
+  [ "$(cat "$dir/real.json")" = '{"x":1}' ] || fail "dry-run changed the settings file"
+  echo "ok: dry-run-keeps-symlink"
+}
+dry_run_keeps_symlink
+
 echo "all merge-settings tests passed"

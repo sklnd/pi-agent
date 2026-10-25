@@ -4,5 +4,8 @@
     "correctness": "error",
     "suspicious": "warn"
   },
+  "rules": {
+    "curly": "error"
+  },
   "ignorePatterns": ["node_modules", "dist"]
 }

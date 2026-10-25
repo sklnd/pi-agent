@@ -34,6 +34,12 @@ export interface SandboxConfig {
   filesystem: FilesystemPolicy;
 }
 
+/** A parsed project config: each section may be present only in part. */
+export interface PartialSandboxConfig {
+  network?: Partial<NetworkPolicy>;
+  filesystem?: Partial<FilesystemPolicy>;
+}
+
 /**
  * Fallback baked-in policy, used when no project sandbox.json exists on disk.
  * This is the single source of truth for the default policy — nix-managed via
@@ -102,34 +108,165 @@ export const DEFAULT_CONFIG: SandboxConfig = {
       "~/Library/Caches",
       "~/Library/pnpm",
     ],
-    denyWrite: [".env", ".env.*", "*.pem", "*.key", "*.p12", "id_rsa", "id_ed25519"],
+    denyWrite: ["**/.env", "**/.env.*", "*.pem", "*.key", "*.p12", "**/id_rsa", "**/id_ed25519"],
   },
 };
 
-/** Right-hand array wins if present; otherwise keep the base. (Override replaces,
- *  it does not concatenate — a project sandbox.json fully controls each list.) */
-function pick<T>(base: T[], override: T[] | undefined): T[] {
-  return override !== undefined ? override : base;
+/** Keep only values that the default policy already allows. */
+function intersectAllowed<PolicyValue>(
+  defaultValues: PolicyValue[],
+  projectValues: PolicyValue[] | undefined,
+): PolicyValue[] {
+  if (projectValues === undefined) {
+    return defaultValues;
+  }
+  const projectValueSet = new Set(projectValues);
+  return defaultValues.filter((value) => projectValueSet.has(value));
 }
 
-export function mergeConfig(base: SandboxConfig, o: Partial<SandboxConfig>): SandboxConfig {
+/** Add project denials without letting the project remove a default denial. */
+function unionDenied<PolicyValue>(
+  defaultValues: PolicyValue[],
+  projectValues: PolicyValue[] | undefined,
+): PolicyValue[] {
+  if (projectValues === undefined) {
+    return defaultValues;
+  }
+  return [...new Set([...defaultValues, ...projectValues])];
+}
+
+/**
+ * Merge a project policy into the default policy. A project may only tighten:
+ * allow lists are intersected and deny lists are unioned. An absent list keeps
+ * the default unchanged.
+ */
+export function mergeConfig(
+  defaultConfig: SandboxConfig,
+  projectConfig: PartialSandboxConfig,
+): SandboxConfig {
   return {
     network: {
-      allowedDomains: pick(base.network.allowedDomains, o.network?.allowedDomains),
-      deniedDomains: pick(base.network.deniedDomains, o.network?.deniedDomains),
-      allowLocalBinding: o.network?.allowLocalBinding ?? base.network.allowLocalBinding,
+      allowedDomains: intersectAllowed(
+        defaultConfig.network.allowedDomains,
+        projectConfig.network?.allowedDomains,
+      ),
+      deniedDomains: unionDenied(
+        defaultConfig.network.deniedDomains,
+        projectConfig.network?.deniedDomains,
+      ),
+      // A project can turn loopback binding off, but never back on.
+      allowLocalBinding:
+        defaultConfig.network.allowLocalBinding &&
+        (projectConfig.network?.allowLocalBinding ?? true),
     },
     filesystem: {
-      denyRead: pick(base.filesystem.denyRead, o.filesystem?.denyRead),
-      allowRead: pick(base.filesystem.allowRead, o.filesystem?.allowRead),
-      allowWrite: pick(base.filesystem.allowWrite, o.filesystem?.allowWrite),
-      denyWrite: pick(base.filesystem.denyWrite, o.filesystem?.denyWrite),
+      denyRead: unionDenied(defaultConfig.filesystem.denyRead, projectConfig.filesystem?.denyRead),
+      allowRead: intersectAllowed(
+        defaultConfig.filesystem.allowRead,
+        projectConfig.filesystem?.allowRead,
+      ),
+      allowWrite: intersectAllowed(
+        defaultConfig.filesystem.allowWrite,
+        projectConfig.filesystem?.allowWrite,
+      ),
+      denyWrite: unionDenied(
+        defaultConfig.filesystem.denyWrite,
+        projectConfig.filesystem?.denyWrite,
+      ),
     },
   };
 }
 
-/** Parse a possibly-partial config blob (from JSON.parse). Never throws. */
-export function coercePartial(raw: unknown): Partial<SandboxConfig> {
-  if (!raw || typeof raw !== "object") return {};
-  return raw as Partial<SandboxConfig>;
+/** Keep only string entries; a non-array value means the field was malformed. */
+function stringList(value: unknown): string[] | undefined {
+  if (!Array.isArray(value)) {
+    return undefined;
+  }
+  return value.filter((entry): entry is string => typeof entry === "string");
+}
+
+function booleanValue(value: unknown): boolean | undefined {
+  return typeof value === "boolean" ? value : undefined;
+}
+
+type FieldValidator<Value> = (value: unknown) => Value | undefined;
+
+type FieldValidators<Schema> = {
+  [Field in keyof Schema]-?: FieldValidator<Schema[Field]>;
+};
+
+/**
+ * The one place a config field is declared. Adding a policy field means adding
+ * it to the interface and to this table; `satisfies` makes a mismatch a type
+ * error.
+ */
+const NETWORK_FIELDS = {
+  allowedDomains: stringList,
+  deniedDomains: stringList,
+  allowLocalBinding: booleanValue,
+} satisfies FieldValidators<NetworkPolicy>;
+
+const FILESYSTEM_FIELDS = {
+  denyRead: stringList,
+  allowRead: stringList,
+  allowWrite: stringList,
+  denyWrite: stringList,
+} satisfies FieldValidators<FilesystemPolicy>;
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function isFieldName<Schema extends object>(
+  fieldName: string,
+  fieldValidators: FieldValidators<Schema>,
+): fieldName is keyof Schema & string {
+  return Object.hasOwn(fieldValidators, fieldName);
+}
+
+/** Validate each declared field independently; invalid fields are dropped. */
+function pickValidFields<Schema extends object>(
+  rawSection: unknown,
+  fieldValidators: FieldValidators<Schema>,
+): Partial<Schema> | undefined {
+  if (!isRecord(rawSection)) {
+    return undefined;
+  }
+
+  const validFields: Partial<Schema> = {};
+
+  // Iterate the untrusted input keys but only keep names the schema declares.
+  for (const fieldName of Object.keys(rawSection)) {
+    if (!isFieldName(fieldName, fieldValidators)) {
+      continue;
+    }
+    const parsedValue = fieldValidators[fieldName](rawSection[fieldName]);
+    if (parsedValue !== undefined) {
+      validFields[fieldName] = parsedValue;
+    }
+  }
+
+  return Object.keys(validFields).length > 0 ? validFields : undefined;
+}
+
+/** Parse a possibly-partial config blob (from JSON.parse). Never throws, and
+ *  drops fields with the wrong type so one bad config cannot break the tools. */
+export function coercePartial(rawValue: unknown): PartialSandboxConfig {
+  if (!isRecord(rawValue)) {
+    return {};
+  }
+
+  const result: PartialSandboxConfig = {};
+
+  const network = pickValidFields(rawValue.network, NETWORK_FIELDS);
+  if (network) {
+    result.network = network;
+  }
+
+  const filesystem = pickValidFields(rawValue.filesystem, FILESYSTEM_FIELDS);
+  if (filesystem) {
+    result.filesystem = filesystem;
+  }
+
+  return result;
 }
