@@ -4,7 +4,9 @@
 # because the non-zero status is what CI keys on).
 
 [global]
-excludes = ["node_modules", "result", ".direnv", ".git", ".jj"]
+# pnpm-lock.yaml matches the oxfmt `*.yaml` include but oxfmt ignores it, so
+# treefmt would fail with "Expected at least one target file".
+excludes = ["node_modules", "result", ".direnv", ".git", ".jj", "pnpm-lock.yaml"]
 
 [formatter.alejandra]
 command = "alejandra"
