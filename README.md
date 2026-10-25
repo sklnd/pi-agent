@@ -80,7 +80,9 @@ just fix        # format and fix lint issues
 
 ## Nix
 
-The extension has no npm dependencies: pi provides the API and `srt` is a separate binary. So the flake only copies source and nothing goes through npm.
+The flake packages the whole setup and exposes a home-manager module.
+
+Nothing goes through npm or a build step. In-tree extensions have no runtime npm dependencies. Only pi APIs, srt, and node functionality are used.
 
 It exposes three things:
 
@@ -90,4 +92,4 @@ It exposes three things:
 
 ### Home-manager module
 
-`homeManagerModules.default` installs pi and srt, sets the environment variables, and symlinks the extensions and curated `pi/APPEND_SYSTEM.md` under `configDir` (default `~/.config/pi`). On activation it merges `pi/settings.json` into the mutable `<configDir>/settings.json`. Curated settings keys win. The exception is `packages`, which is unioned so locally installed pi extensions survive a switch.
+`homeManagerModules.default` installs pi and srt, sets the environment variables, and symlinks the extensions and curated configuration under `configDir` (default `~/.config/pi`). On activation it merges `pi/settings.json` into the mutable `<configDir>/settings.json`. Curated settings keys win, except `packages`, which is unioned so locally installed pi extensions are preserved.
