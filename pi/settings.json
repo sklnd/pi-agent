@@ -1,4 +1,4 @@
 {
-  "packages": ["npm:@dietrichgebert/ponytail", "@plannotator/pi-extension"],
+  "packages": ["npm:@dietrichgebert/ponytail", "npm:@plannotator/pi-extension"],
   "defaultTools": ["+codemode"]
 }
