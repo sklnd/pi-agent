@@ -18,7 +18,8 @@
     #
     #   packages.pi-config      — $PI_CODING_AGENT_DIR tree: settings.json +
     #                              APPEND_SYSTEM.md +
-    #                              extensions/sandbox/*.ts (jiti-loaded, no build)
+    #                              extensions/{sandbox,agent-notify}/*.ts
+    #                              (jiti-loaded, no build)
     #   packages.pi / srt — passthroughs from llm-agents.nix for convenience
     #   homeManagerModules.default — home-manager module that installs pi + srt,
     #                              sets env vars, and symlinks the config tree.
@@ -29,8 +30,9 @@
       llmPkgs = (llm-agents.packages or {}).${system} or {};
 
       pi-config = pkgs.runCommandLocal "pi-config" {} ''
-        mkdir -p $out/extensions/sandbox
+        mkdir -p $out/extensions/sandbox $out/extensions/agent-notify
         cp ${./src/sandbox}/*.ts $out/extensions/sandbox/
+        cp ${./src/agent-notify}/*.ts $out/extensions/agent-notify/
         cp ${./pi/settings.json} $out/settings.json
         cp ${./pi/APPEND_SYSTEM.md} $out/APPEND_SYSTEM.md
       '';

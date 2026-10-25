@@ -2,7 +2,7 @@
 
 Configuration and extensions for the [pi](https://github.com/earendil-works/pi) coding agent. It is consumed as a nix flake by my [nix-config](../nix-config).
 
-This provides an opinionated configuration for my pi setup, with the extensions I find essential. It includes a `sandbox` extension that places guardrails on system access.
+This provides an opinionated configuration for my pi setup, with the extensions I find essential. It includes a `sandbox` extension that places guardrails on system access and an `agent-notify` extension that signals when the agent is ready for input.
 
 ## Layout
 
@@ -10,6 +10,7 @@ This provides an opinionated configuration for my pi setup, with the extensions 
 pi/settings.json      # pi user settings (packages, default tools)
 pi/APPEND_SYSTEM.md   # curated append system prompt
 src/sandbox/          # the "sandbox" extension
+src/agent-notify/     # the "agent-notify" extension
 test/                 # unit tests for the pure modules
 nix/                  # home-manager module, settings-merge script and test
 flake.nix             # packages.pi-config (assembled config tree), checks, home-manager module
@@ -36,6 +37,14 @@ A command pipeline where any segment is untrusted is fully sandboxed. Command `s
 ### File tools
 
 File tools (`read`, `write`, `edit`, `find`, `ls`, `grep`) are checked in the extension against the same filesystem policy. They run in pi's own process, so `srt` cannot enforce filesystem controls for them.
+
+## `agent-notify` extension
+
+When `agent_settled` fires without an abort, the extension notifies you that pi is waiting for input. It uses `osascript` on macOS and `notify-send` on Linux when available, and falls back to a terminal OSC notification (including tmux passthrough).
+
+Inside tmux, set `set -g allow-passthrough all` so background tabs reach the outer terminal. SSH sessions always use the terminal sequence, so the notification lands on your local terminal.
+
+`/notify` sends a test notification.
 
 ## Configuring
 
@@ -74,10 +83,10 @@ The extension has no npm dependencies: pi provides the API and `srt` is a separa
 
 It exposes three things:
 
-- `packages.pi-config`: the `$PI_CODING_AGENT_DIR` tree, which contains `settings.json`, `APPEND_SYSTEM.md`, and `extensions/sandbox/*.ts`.
+- `packages.pi-config`: the `$PI_CODING_AGENT_DIR` tree, which contains `settings.json`, `APPEND_SYSTEM.md`, and in tree extensions.
 - `packages.pi` and `packages.srt`: passthroughs from [llm-agents.nix](https://github.com/numtide/llm-agents.nix).
 - `homeManagerModules.default`: the home-manager module, described below.
 
 ### Home-manager module
 
-`homeManagerModules.default` installs pi and srt, sets the environment variables, and symlinks the extension and curated `pi/APPEND_SYSTEM.md`. On activation it merges `pi/settings.json` into the mutable `~/.config/pi/settings.json`. Curated settings keys win. The exception is `packages`, which is unioned so locally installed pi extensions survive a switch.
+`homeManagerModules.default` installs pi and srt, sets the environment variables, and symlinks the extensions and curated `pi/APPEND_SYSTEM.md`. On activation it merges `pi/settings.json` into the mutable `~/.config/pi/settings.json`. Curated settings keys win. The exception is `packages`, which is unioned so locally installed pi extensions survive a switch.
