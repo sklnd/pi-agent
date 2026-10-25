@@ -19,13 +19,13 @@ jobs:
     timeout-minutes: 5
 
     steps:
-      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0 https://github.com/actions/checkout
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v5.0.0 https://github.com/actions/checkout
         with:
           persist-credentials: false
-      - uses: jdx/mise-action@1648a7812b9aeae629881980618f079932869151 # 4.0.1 https://github.com/jdx/mise-action
+      - uses: jdx/mise-action@8418fedb1110381a0d3ba51a7a415d7c1b884550 # 4.0.1 https://github.com/jdx/mise-action
 
       - name: Cache pnpm store
-        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # 5.0.5 https://github.com/actions/cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # 5.0.5 https://github.com/actions/cache
         with:
           path: ~/.local/share/pnpm/store
           key: pnpm-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
@@ -48,11 +48,11 @@ jobs:
     timeout-minutes: 5
 
     steps:
-      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0 https://github.com/actions/checkout
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v5.0.0 https://github.com/actions/checkout
         with:
           persist-credentials: false
       - uses: cachix/install-nix-action@448cde739abec1eaf0646249e3d25bb8d9bc7702 # v31.11.2 https://github.com/cachix/install-nix-action
-      - uses: jdx/mise-action@1648a7812b9aeae629881980618f079932869151 # 4.0.1 https://github.com/jdx/mise-action
+      - uses: jdx/mise-action@8418fedb1110381a0d3ba51a7a415d7c1b884550 # 4.0.1 https://github.com/jdx/mise-action
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
