@@ -70,13 +70,15 @@ just fix        # format and fix lint issues
 
 ### Tooling
 
-- TypeScript: type checking
-- treefmt: formatting
-- oxlint: TypeScript linting
-- oxfmt: TypeScript formatting
-- alejandra: Nix formatting
-- statix: Nix linting
-- deadnix: Nix linting
+| Tool       | Role                    |
+| ---------- | ----------------------- |
+| treefmt    | runs all the formatters |
+| oxfmt      | TypeScript formatting   |
+| oxlint     | TypeScript linting      |
+| TypeScript | type checking           |
+| alejandra  | Nix formatting          |
+| statix     | Nix linting             |
+| deadnix    | Nix linting             |
 
 ## Nix
 
