@@ -14,23 +14,27 @@ nix/hm-module.nix     # home-manager module that installs pi + srt and wires the
 
 The flake vendors `src/sandbox/*.ts` + `pi/settings.json` into `$out` matching pi's `$PI_CODING_AGENT_DIR` layout (`settings.json`, `extensions/sandbox/*.ts`). The default sandbox policy lives in code as `DEFAULT_CONFIG` (`config.ts`).
 
-The flake also declares `llm-agents` (https://github.com/numtide/llm-agents.nix) as an input and exposes a home-manager module (`homeManagerModules.default`, `nix/hm-module.nix`) that installs `pi` + `srt` from llm-agents, sets `PI_CODING_AGENT_DIR` / `PI_SANDBOX_SRT_BIN`, symlinks extensions into `~/.config/pi/extensions`, and merges `pi/settings.json` (+ optional `programs.pi-agent.settings`) into a mutable `~/.config/pi/settings.json` on activation. This ensures curated packages/extensions sync without drift across machines while machine-local runtime state (like `defaultModel` chosen via `Ctrl+S`) is preserved. `nix-config` imports this module instead of maintaining its own inline `pi.nix`, so this flake owns the whole setup. The flake's `packages.pi` and `packages.srt` are passthroughs from llm-agents for convenience.
+The flake also declares `llm-agents` (https://github.com/numtide/llm-agents.nix) as an input and exposes a home-manager module (`homeManagerModules.default`, `nix/hm-module.nix`) that installs `pi` + `srt` from llm-agents, sets `PI_CODING_AGENT_DIR` / `PI_SANDBOX_SRT_BIN`, symlinks extensions into `~/.config/pi/extensions`, and merges `pi/settings.json` (+ optional `programs.pi-agent.settings`) into a mutable `~/.config/pi/settings.json` on activation. This ensures curated packages/extensions sync without drift across machines while machine-local runtime state (like `defaultModel` chosen via `Ctrl+S`) is preserved. The merge itself is `nix/merge-settings.sh` (read and run by the module, no build step) and is override-by-key except `packages`, which is a union of curated + locally-installed packages so interactive installs survive a switch; a package removed from curation is still dropped via the `.pi-curated-packages.json` state file. `nix/merge-settings.test.sh` exercises it (including the two-switch state round-trip) and is wired up as `checks.<system>.settings-merge` for `nix flake check`. `nix-config` imports this module instead of maintaining its own inline `pi.nix`, so this flake owns the whole setup. The flake's `packages.pi` and `packages.srt` are passthroughs from llm-agents for convenience.
 
 ## Toolchain
 
 Node 26 + pnpm 11 via [mise](https://mise.jdx.dev) (`mise.toml`). TypeScript 7 `tsc` for typechecking, `oxlint`/`oxfmt` for lint/format, `vitest` for tests. `just` is the task runner (`mise.toml` aliases `make`→`just`).
 
+`just fix` runs `treefmt` (`treefmt.toml`: alejandra + oxfmt). `treefmt` is **required on PATH** and is not installed by mise/pnpm — it comes from the maintainer's nix config. If you don't have it, run the underlying formatters directly (`alejandra --check .`, `oxfmt --check .`).
+
 ```sh
 just install      # mise install + pnpm install
-just check        # fmt-check + lint + typecheck + test  (run this after changes)
-just test         # vitest run
+just check        # full: check-js + check-nix
+just check-js     # fmt-check + lint-js + typecheck + test-js  (no nix; run in the sandbox)
+just lint         # lint-js (oxlint) + lint-nix (statix, deadnix)
+just test         # test-js (vitest) + test-nix (nix flake check)
 just build        # nix build .#pi-config
 just show         # build + list the assembled tree
-just fix          # oxfmt --write + oxlint --fix + nix fmt
+just fix          # treefmt then oxlint --fix
 just update       # nix flake update
 ```
 
-Note: `nix` commands (build/show/update/fmt) need the nix daemon, which is not available inside the pi sandbox — run those outside the agent. `just check` (the JS side: fmt-check + lint + typecheck + test) does not need nix.
+Note: `nix` commands (check/build/show/update) need the nix daemon, which is not available inside the pi sandbox — run those outside the agent. `just check-js` (fmt-check + lint-js + typecheck + test-js) does not need nix and is the sandbox-safe check; `just check` adds `check-nix` = `lint-nix` + `test-nix`. `just test` runs both `test-js` and `test-nix`. `lint-nix` runs `statix check .` and `deadnix --fail .` (both already on PATH via nix-config). All source formatting goes through `treefmt`; `just fmt-check` runs `treefmt --fail-on-change`, which rewrites files before exiting non-zero — the exit status is what CI keys on.
 
 `pnpm` scripts mirror the JS-only checks: `test` (`vitest run`), `test:watch` (`vitest`), `typecheck` (`tsc --noEmit`), `lint` (`oxlint`), `format`/`format:check` (`oxfmt`).
 
@@ -53,7 +57,8 @@ The extension layers OS-level sandboxing (`srt`) with pi-level filesystem enforc
 
 ## Conventions
 
-- `just check` before declaring work done. Fix lint/format failures with `just fix`.
+- `just check-js` before declaring work done inside the sandbox; run `just check` (JS + nix) outside. Fix lint/format failures with `just fix`.
 - Tests live in `test/*.test.ts` (vitest) and cover the pure logic in `config.ts`/`fsguard.ts`/`policy.ts` — add tests when changing that logic. There are no integration tests for the pi wiring in `index.ts`/`srt.ts` by design.
+- The home-manager settings merge is the exception: its shell+jq logic lives in `nix/merge-settings.sh` and is tested by `nix/merge-settings.test.sh` (run via `nix flake check`, or directly with `bash nix/merge-settings.test.sh`). Don't add a parallel vitest copy — one harness is enough.
 - Keep file header comments accurate; they document each module's role and the no-pi-import invariant.
 - This repo is also a jj/git repo (`.jj` exists) — be careful with `git`/`jj` commands that could rewrite history.

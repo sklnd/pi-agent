@@ -1,0 +1,36 @@
+# Unified formatter config. `treefmt` must be on PATH — it comes from the nix
+# config, not mise/pnpm. `just fix` runs it; `just fmt-check` runs it with
+# `--fail-on-change` (which rewrites files before exiting non-zero — acceptable
+# because the non-zero status is what CI keys on).
+
+[global]
+excludes = ["node_modules", "result", ".direnv", ".git", ".jj"]
+
+[formatter.alejandra]
+command = "alejandra"
+includes = ["*.nix"]
+
+[formatter.oxfmt]
+command = "oxfmt"
+includes = [
+  "*.cjs",
+  "*.css",
+  "*.graphql",
+  "*.hbs",
+  "*.html",
+  "*.js",
+  "*.json",
+  "*.json5",
+  "*.jsonc",
+  "*.jsx",
+  "*.md",
+  "*.mdx",
+  "*.mjs",
+  "*.mustache",
+  "*.scss",
+  "*.ts",
+  "*.tsx",
+  "*.vue",
+  "*.yaml",
+  "*.yml",
+]

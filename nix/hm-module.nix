@@ -17,6 +17,9 @@
 # in this repo. On `home-manager switch`, keys defined in pi/settings.json overwrite
 # the mutable settings file so computers stay in sync, while keys not in pi/settings.json
 # (like interactively saved defaultModel/defaultProvider) are preserved.
+# `packages` is the exception: it is merged as a union so packages installed
+# interactively (e.g. via the TUI) survive a switch. A package removed from the
+# curated list is still dropped, tracked via .pi-curated-packages.json.
 {
   self,
   llm-agents,
@@ -89,6 +92,8 @@ in {
         the curated pi/settings.json in this repo. Keys defined here overwrite
         the corresponding keys in ~/.config/pi/settings.json on activation, while
         unspecified keys (such as interactively chosen models) are preserved.
+        `packages` is merged as a union with the on-disk value instead of
+        overwriting, so locally installed packages survive a switch.
       '';
       example = {
         defaultProvider = "anthropic";
@@ -104,20 +109,39 @@ in {
   };
 
   config = lib.mkIf cfg.enable {
-    home.packages =
-      lib.optional (cfg.package != null) cfg.package
-      ++ lib.optional (cfg.srtPackage != null) cfg.srtPackage
-      ++ cfg.extraPackages
-      # srt needs bubblewrap + socat on Linux (ripgrep comes via dev-tools).
-      ++ lib.optional (pkgs.stdenv.isLinux && cfg.srtPackage != null) pkgs.bubblewrap
-      ++ lib.optional (pkgs.stdenv.isLinux && cfg.srtPackage != null) pkgs.socat;
+    home = {
+      packages =
+        lib.optional (cfg.package != null) cfg.package
+        ++ lib.optional (cfg.srtPackage != null) cfg.srtPackage
+        ++ cfg.extraPackages
+        # srt needs bubblewrap + socat on Linux (ripgrep comes via dev-tools).
+        ++ lib.optional (pkgs.stdenv.isLinux && cfg.srtPackage != null) pkgs.bubblewrap
+        ++ lib.optional (pkgs.stdenv.isLinux && cfg.srtPackage != null) pkgs.socat;
 
-    home.sessionVariables = lib.mkMerge [
-      {PI_CODING_AGENT_DIR = cfg.configDir;}
-      (lib.mkIf (cfg.srtPackage != null) {
-        PI_SANDBOX_SRT_BIN = "${cfg.srtPackage}/bin/srt";
-      })
-    ];
+      sessionVariables = lib.mkMerge [
+        {PI_CODING_AGENT_DIR = cfg.configDir;}
+        (lib.mkIf (cfg.srtPackage != null) {
+          PI_SANDBOX_SRT_BIN = "${cfg.srtPackage}/bin/srt";
+        })
+      ];
+
+      # Mutable settings.json (pi writes runtime state; a store symlink would EPERM).
+      # Curated keys win, except `packages`, which is a union to keep local installs.
+      activation.initPiSettings = lib.hm.dag.entryAfter ["writeBoundary"] (let
+        extraJson = (pkgs.formats.json {}).generate "pi-extra-settings.json" cfg.settings;
+        mergeScript = ./merge-settings.sh;
+        jq = "${pkgs.jq}/bin/jq";
+      in ''
+        SETTINGS_FILE="${cfg.configDir}/settings.json" \
+        STATE_FILE="${cfg.configDir}/.pi-curated-packages.json" \
+        BASE="${piConfig}/settings.json" \
+        EXTRA="${extraJson}" \
+        JQ="${jq}" \
+        DRY_RUN_CMD="$DRY_RUN_CMD" \
+        DRY_RUN="''${DRY_RUN:-}" \
+        ${pkgs.bash}/bin/bash ${mergeScript}
+      '');
+    };
 
     xdg.configFile =
       {
@@ -128,57 +152,5 @@ in {
         value.source = path;
       })
       cfg.extensions;
-
-    # pi writes runtime state (e.g. defaultModel when chosen via Ctrl+S, thinking level,
-    # and telemetry) to settings.json. A read-only store symlink causes EPERM on save.
-    # Instead, we manage ~/.config/pi/settings.json as a mutable file on activation:
-    # curated keys from pi/settings.json (and cfg.settings) overwrite the on-disk file
-    # on every switch (preventing drift across computers), while machine-local runtime
-    # preferences (such as defaultModel) are preserved.
-    home.activation.initPiSettings = lib.hm.dag.entryAfter ["writeBoundary"] (let
-      hasExtra = cfg.settings != {};
-      extraJson =
-        if hasExtra
-        then (pkgs.formats.json {}).generate "pi-extra-settings.json" cfg.settings
-        else null;
-      jq = "${pkgs.jq}/bin/jq";
-    in ''
-      settingsDir="${cfg.configDir}"
-      settingsFile="$settingsDir/settings.json"
-
-      $DRY_RUN_CMD mkdir -p "$settingsDir"
-
-      userJson="{}"
-      if [ -e "$settingsFile" ] && ${jq} empty "$settingsFile" 2>/dev/null; then
-        userJson=$(${jq} '.' "$settingsFile")
-      fi
-
-      # Unlink any existing symlink (e.g. migrating from read-only xdg.configFile)
-      if [ -L "$settingsFile" ]; then
-        $DRY_RUN_CMD rm -f "$settingsFile"
-      fi
-
-      if [ -v DRY_RUN ]; then
-        echo "(dry-run) merge ${piConfig}/settings.json into $settingsFile"
-      else
-        ${
-        if hasExtra
-        then ''
-          merged=$(echo "$userJson" | ${jq} \
-            --slurpfile base "${piConfig}/settings.json" \
-            --slurpfile extra "${extraJson}" \
-            '. * $base[0] * $extra[0]')
-        ''
-        else ''
-          merged=$(echo "$userJson" | ${jq} \
-            --slurpfile base "${piConfig}/settings.json" \
-            '. * $base[0]')
-        ''
-      }
-        echo "$merged" > "$settingsFile.tmp"
-        mv "$settingsFile.tmp" "$settingsFile"
-        chmod u+w "$settingsFile"
-      fi
-    '');
   };
 }

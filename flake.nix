@@ -43,6 +43,20 @@
       inherit self llm-agents;
     };
 
+    # Fixture tests for the settings-merge shell used by the home-manager
+    # activation. Run with `nix flake check`.
+    checks = forAllSystems (pkgs: {
+      settings-merge =
+        pkgs.runCommand "check-settings-merge" {
+          nativeBuildInputs = [pkgs.bash pkgs.coreutils pkgs.jq];
+        } ''
+          export MERGE_SCRIPT=${./nix/merge-settings.sh}
+          export JQ=${pkgs.jq}/bin/jq
+          bash ${./nix/merge-settings.test.sh}
+          touch $out
+        '';
+    });
+
     formatter = forAllSystems (pkgs: pkgs.alejandra);
   };
 }

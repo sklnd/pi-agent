@@ -11,25 +11,42 @@ install:
     mise install
     pnpm install
 
-check: fmt-check lint typecheck test
+# Full check: JS + nix.
+check: check-js check-nix
 
-# Run the unit tests.
-test:
+# JS checks, sandbox-safe.
+check-js: fmt-check lint-js typecheck test-js
+
+check-nix: lint-nix test-nix
+
+# Run all linters.
+lint: lint-js lint-nix
+
+# Run all tests.
+test: test-js test-nix
+
+test-js:
     pnpm run test
+
+test-nix:
+    nix flake check
 
 typecheck:
     tsc --noEmit
 
-lint:
+lint-js:
     oxlint .
 
+lint-nix:
+    statix check .
+    deadnix --fail .
+
 fix:
-    oxfmt --write .
+    treefmt
     oxlint --fix .
-    nix fmt .
 
 fmt-check:
-    oxfmt --check .
+    treefmt --fail-on-change
 
 # Build the nix package (assembled pi config tree) that nix-config consumes.
 build:
