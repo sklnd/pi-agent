@@ -1,0 +1,79 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  js:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0 https://github.com/actions/checkout
+        with:
+          persist-credentials: false
+      - uses: jdx/mise-action@1648a7812b9aeae629881980618f079932869151 # 4.0.1 https://github.com/jdx/mise-action
+
+      - name: Cache pnpm store
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # 5.0.5 https://github.com/actions/cache
+        with:
+          path: ~/.local/share/pnpm/store
+          key: pnpm-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
+          restore-keys: pnpm-${{ runner.os }}-
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Lint JS
+        run: just lint-js
+
+      - name: Typecheck
+        run: just typecheck
+
+      - name: Test JS
+        run: just test-js
+
+  nix:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0 https://github.com/actions/checkout
+        with:
+          persist-credentials: false
+      - uses: cachix/install-nix-action@448cde739abec1eaf0646249e3d25bb8d9bc7702 # v31.11.2 https://github.com/cachix/install-nix-action
+      - uses: jdx/mise-action@1648a7812b9aeae629881980618f079932869151 # 4.0.1 https://github.com/jdx/mise-action
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Install check tools
+        run: |
+          nix profile install nixpkgs#treefmt nixpkgs#alejandra nixpkgs#statix nixpkgs#deadnix
+          echo "$PWD/node_modules/.bin" >> "$GITHUB_PATH" # oxfmt, oxlint, tsc, vitest
+
+      - name: Format
+        run: just fmt-check
+
+      - name: Lint nix
+        run: just lint-nix
+
+      - name: Test nix
+        run: just test-nix
+
+      - name: Build config tree
+        run: just build
+
+      - name: Show formatting diffs
+        if: failure()
+        run: git diff
